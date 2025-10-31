@@ -1,0 +1,52 @@
+<!--
+  Page 3.3 — jeu_du_9.html
+  Version: v1.1 (2025-10-30)
+  Auteur: Jean‑François + ChatGPT
+  Objet: Titre + bouton Retour vers la sélection du jeu (mobile).
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Jeu du 9</title>
+  <style>
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
+    .wrap{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 0;font-size:1.8rem}
+    .muted{color:var(--muted)}
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:56px;padding:16px;border-radius:16px;font-size:1.15rem;font-weight:800;color:#0c111b;background:var(--accent)}
+    .footer{color:var(--muted);text-align:center;font-size:.95rem}
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    const firebaseConfig = { apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg", authDomain: "soireecartev2.firebaseapp.com", projectId: "soireecartev2" };
+    initializeApp(firebaseConfig);
+    const qs = (k)=>new URLSearchParams(location.search).get(k);
+    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
+    let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+    window.addEventListener('DOMContentLoaded',()=>{
+      if(!code){ location.href='selection_jeux.html'; return; }
+      document.getElementById('titleCode').textContent = `#${code}`;
+      document.getElementById('btnBack').addEventListener('click', ()=>{
+        location.href = `selection_jeux.html?code=${code}`;
+      });
+    });
+  </script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Jeu du 9 <span class="muted" id="titleCode"></span></h1>
+    </section>
+    <section class="card">
+      <button id="btnBack" class="btn">⟵ Retour au choix du jeu</button>
+    </section>
+    <div class="footer">v1.1 • Titre + bouton Retour</div>
+  </main>
+</body>
+</html>

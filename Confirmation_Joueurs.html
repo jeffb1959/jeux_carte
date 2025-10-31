@@ -1,0 +1,221 @@
+<!--
+  Page 2 — confirmation_joueurs.html
+  Version: v2.2 (2025-10-30)
+  Changements v2.2:
+    - 🔒 Liage d’appareil par UID anonyme Firebase:
+      • un téléphone ne peut confirmer qu’un seul joueur
+      • un joueur ne peut pas être confirmé par 2 téléphones
+    - Lien de dépannage vers attente_confirmantion.html?code=XXXX&host=1
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Sélectionner votre nom et le confirmer</title>
+  <style>
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --ok:#22c55e; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
+    .wrap{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 0;font-size:1.7rem}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:12px}
+    .players{display:grid;gap:10px}
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:56px;padding:16px;border-radius:16px;font-size:1.2rem;font-weight:800;color:#0c111b;background:var(--accent)}
+    .btn.secondary{background:#ffd166}
+    .btn.danger{background:var(--danger);color:#fff}
+    .btn.disabled{opacity:.55;filter:grayscale(.4);cursor:not-allowed}
+    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    .ok{background:#0e2b1b;border:1px solid #1f6b3a;padding:10px;border-radius:12px;color:#d6ffe8;display:none}
+    .footer{color:var(--muted);text-align:center;font-size:.95rem}
+    .linkDep{color:var(--accent);text-decoration:none;font-size:.9rem;text-align:center;margin-top:6px;display:block}
+    .linkDep:hover{text-decoration:underline}
+
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px}
+    .modal .box{background:#111a2e;border:1px solid #243252;border-radius:16px;max-width:520px;width:100%;padding:16px;display:grid;gap:12px}
+    .modal h2{margin:0 0 6px;font-size:1.25rem}
+    .center{ text-align:center }
+    .codeInput{ display:grid; gap:8px }
+    .codeInput input{ width:100%; font-size:1.3rem; padding:12px 14px; border-radius:12px; border:2px solid transparent; background:#0f1a30; color:var(--text); }
+    .codeInput input:focus{ border-color:var(--accent); outline:none }
+  </style>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    const $  = (id)=>document.getElementById(id);
+    const qs = (k)=>new URLSearchParams(location.search).get(k);
+    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
+
+    // Lien de dépannage vers la page hôte (on garde le nom tel qu'utilisé dans le projet)
+    const HOST_PAGE_NAME = 'attente_confirmantion.html';
+
+    let myUid   = null;   // UID anonyme de CE téléphone
+    let myOrder = null;   // index du joueur lié à CE téléphone (si déjà lié)
+    let code    = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+
+    const showError = (m)=>{ const b=$('error'); b.textContent=m; b.style.display='block'; $('ok').style.display='none'; };
+    const showOk    = (m)=>{ const b=$('ok');    b.textContent=m; b.style.display='block'; $('error').style.display='none'; };
+
+    signInAnonymously(auth).catch(err => showError(`Auth anonyme impossible: ${err?.message||err}`));
+
+    onAuthStateChanged(auth, (user) => {
+      if(!user) return;
+      myUid = user.uid;
+      try{ localStorage.setItem('sc_uid', myUid); }catch{}
+      if(!code){ renderAskCode(); } else { subscribeToSoiree(); }
+    });
+
+    function renderAskCode(){
+      $('titleCode').textContent = '';
+      $('players').innerHTML = '';
+      $('askCode').hidden = false;
+      $('codeInput').value = '';
+      $('btnJoinCode').onclick = ()=>{
+        const v = sanitizeCode($('codeInput').value);
+        if(v.length!==4){ showError('Entrez un code à 4 chiffres.'); return; }
+        code = v; localStorage.setItem('sc_code', code);
+        $('askCode').hidden = true;
+        subscribeToSoiree();
+      };
+    }
+
+    function allConfirmed(players){ return players.length>0 && players.every(p=>!!p.confirmed); }
+
+    function subscribeToSoiree(){
+      const ref = doc(db, 'soirees', code);
+      onSnapshot(ref, (snap) => {
+        if(!snap.exists()){
+          showError(`Soirée #${code} introuvable`);
+          $('players').innerHTML='';
+          $('titleCode').textContent = '';
+          return;
+        }
+        const data = snap.data();
+        $('titleCode').textContent = `#${code}`;
+        renderPlayers(data.players || []);
+        $('linkDepannage').href = `${HOST_PAGE_NAME}?code=${code}&host=1`;
+        if(allConfirmed(data.players||[])){
+          window.location.href = `selection_jeux.html?code=${code}`;
+        }
+      }, (err) => showError(`Erreur de synchro: ${err?.message||err}`));
+    }
+
+    function renderPlayers(players){
+      const root = $('players');
+      root.innerHTML = '';
+
+      // Ce téléphone a-t-il déjà lié un joueur ?
+      myOrder = null;
+      const boundIdx = players.findIndex(p => p && p.uid === myUid);
+      if(boundIdx !== -1) myOrder = boundIdx;
+
+      players.sort((a,b)=>a.order-b.order).forEach(p => {
+        const isMine = (myOrder !== null && p.order === myOrder);
+        const alreadyBoundOther = (myOrder !== null && p.order !== myOrder);
+        const disabled = !!p.confirmed || alreadyBoundOther;
+
+        const btn = document.createElement('button');
+        btn.className = 'btn' + (disabled ? ' disabled' : '');
+        btn.textContent = `${p.order+1}. ${p.name}` + (isMine ? ' (vous)' : '') + (p.confirmed ? ' ✓' : '');
+        btn.disabled = disabled;
+        btn.addEventListener('click', ()=> openModal(p.order, p.name));
+        root.appendChild(btn);
+      });
+    }
+
+    let pending = null;
+    function openModal(order, name){
+      // Empêche de confirmer un deuxième joueur depuis le même appareil
+      if(myOrder !== null && myOrder !== order){
+        showError('Cet appareil est déjà associé à un autre joueur.');
+        return;
+      }
+      pending = { order, name };
+      $('confirmText').textContent = `Veuillez confirmer que vous êtes bien "${name}".`;
+      $('modal').style.display = 'flex';
+    }
+
+    $('btnCancel').addEventListener('click', ()=>{ pending=null; $('modal').style.display='none'; });
+
+    $('btnAccept').addEventListener('click', async ()=>{
+      if(!pending) return;
+      const { order } = pending;
+      $('modal').style.display='none';
+      try{
+        const ref = doc(db, 'soirees', code);
+        const snap = await getDoc(ref);
+        if(!snap.exists()) throw new Error('Soirée introuvable');
+        const data = snap.data();
+        const players = Array.isArray(data.players) ? [...data.players] : [];
+        if(!players[order]) throw new Error('Joueur invalide');
+
+        // 🔒 Liage d’appareil
+        if(players[order].uid && players[order].uid !== myUid){
+          throw new Error('Ce joueur est déjà confirmé sur un autre appareil.');
+        }
+        const already = players.findIndex(p => p && p.uid === myUid);
+        if(already !== -1 && already !== order){
+          throw new Error('Cet appareil a déjà confirmé un autre joueur.');
+        }
+
+        // OK: lie cet appareil à ce joueur et confirme
+        players[order] = { ...players[order], confirmed: true, uid: myUid };
+        await updateDoc(ref, { players });
+
+        try{ localStorage.setItem('sc_myOrder', String(order)); }catch{}
+        showOk(`Confirmation enregistrée pour ${pending.name}.`);
+        pending = null;
+      }catch(err){ showError(`Échec de confirmation: ${err?.message||err}`); }
+    });
+  </script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card grid">
+      <h1>Sélectionner votre nom et le confirmer <span class="muted" id="titleCode"></span></h1>
+      <div id="askCode" class="grid" hidden>
+        <div class="center muted">Entrez le code d'invitation (4 chiffres)</div>
+        <div class="codeInput">
+          <input id="codeInput" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Ex.: 1234" />
+          <button class="btn" id="btnJoinCode">Rejoindre</button>
+        </div>
+      </div>
+      <div id="players" class="players"></div>
+      <a id="linkDepannage" class="linkDep" href="#" target="_blank">Page hôte (dépannage)</a>
+      <div id="error" class="err" role="alert"></div>
+      <div id="ok" class="ok" role="status"></div>
+    </section>
+    <div class="footer">v2.2 • Firestore temps réel • Lien de dépannage hôte • Liage d’appareil</div>
+  </main>
+
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="box">
+      <h2 id="confirmTitle">Confirmation</h2>
+      <div id="confirmText">Veuillez confirmer…</div>
+      <div class="grid">
+        <button class="btn" id="btnAccept">Accepter</button>
+        <button class="btn danger" id="btnCancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

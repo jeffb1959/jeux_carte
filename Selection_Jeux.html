@@ -1,0 +1,77 @@
+<!--
+  Page 3 — selection_jeux.html
+  Version: v1.0 (2025-10-30)
+  Auteur: Jean‑François + ChatGPT
+  Objet: Choix du type de jeu (mobile, style épuré). Transmet le code de soirée à la page du jeu.
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Sélection du jeu</title>
+  <style>
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
+    .wrap{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 0;font-size:1.8rem}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:12px}
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:64px;padding:18px;border-radius:16px;font-size:1.25rem;font-weight:800;color:#0c111b;background:var(--accent)}
+    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    .footer{color:var(--muted);text-align:center;font-size:.95rem}
+  </style>
+  <script type="module">
+    // On reste prêt pour Firestore mais on ne l'utilise pas encore ici.
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2"
+    };
+    initializeApp(firebaseConfig);
+
+    const $ = (id)=>document.getElementById(id);
+    const qs = (k)=>new URLSearchParams(location.search).get(k);
+    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
+
+    let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if(!code){
+        // Petit prompt pour récupérer le code si absent
+        const v = prompt('Entrez le code de la soirée (4 chiffres)')||'';
+        code = sanitizeCode(v);
+        if(code.length!==4){
+          alert('Code invalide. Retour index.');
+          location.href = 'index.html';
+          return;
+        }
+        localStorage.setItem('sc_code', code);
+      }
+      $('titleCode').textContent = `#${code}`;
+
+      // Route les boutons en transmettant ?code=XXXX
+      $('btnDP').addEventListener('click', ()=> location.href = `dame_de_pique.html?code=${code}`);
+      $('btnCH').addEventListener('click', ()=> location.href = `chialeux.html?code=${code}`);
+      $('btnJ9').addEventListener('click', ()=> location.href = `jeu_du_9.html?code=${code}`);
+    });
+  </script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card grid">
+      <h1>Sélectionner le type de jeu <span class="muted" id="titleCode"></span></h1>
+      <button id="btnDP" class="btn">Dame de pique</button>
+      <button id="btnCH" class="btn">Le chialeux</button>
+      <button id="btnJ9" class="btn">Jeu du 9</button>
+      <div id="error" class="err" role="alert"></div>
+    </section>
+    <div class="footer">v1.0 • Choix du jeu • Code propagé</div>
+  </main>
+</body>
+</html>
