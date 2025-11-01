@@ -1,139 +1,213 @@
 <!--
-  Page Hôte — attente_confirmation.html
-  Version: v2.6 (2025-10-31)
-  Correctifs:
-    - Renommage fichier (…confirmantion → …confirmation)
-    - Lien vers confirmation_joueurs.html conservé
-    - QR: qrcodejs UMD
+  Soirée de carte – ATTENTE CONFIRMATION (Hôte)
+  Version: v2.5 (2025-10-31)
+  Rôle:
+    - Affiche le code hôte + QR vers confirmation_joueurs.html?code=XXXX
+    - Affiche la liste des joueurs (confirmés / en attente) en temps réel
+    - Firebase (prod) / SANDBOX (localStorage) automatique
 -->
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Attente de confirmation hôte</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <title>Soirée de carte – Hôte</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
-    .wrap{max-width:760px;margin:0 auto;padding:16px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    h1{margin:4px 0 0;font-size:1.8rem}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    .wrap{max-width:780px;margin:0 auto;padding:18px;display:grid;gap:16px}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 0;font-size:1.7rem}
+    .row{display:grid;gap:14px}
+    .grid{display:grid;gap:14px}
+    .columns{display:grid;gap:16px}
+    @media(min-width:760px){.columns{grid-template-columns:280px 1fr}}
     .muted{color:var(--muted)}
-    .grid{display:grid;gap:12px}
-    .players{display:grid;gap:8px}
-    .chip{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid #243252;background:#0f1a30}
-    .ok{color:#22c55e} .wait{color:#ffd166}
-    a.link{color:var(--accent);text-decoration:none;word-break:break-all}
-    a.link:hover{text-decoration:underline}
-    #qr > img, #qr > canvas { width: 320px; height: 320px; image-rendering: pixelated; }
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#0f1a30}
+    .ok{color:#22c55e}
+    .wait{color:#fbbf24}
+    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    .btn{appearance:none;border:none;cursor:pointer;padding:10px 14px;border-radius:12px;font-weight:700;background:var(--accent);color:#0c111b}
+    .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+    ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+    li{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px dashed var(--line);border-radius:12px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .qr{width:100%;max-width:260px;border-radius:12px;border:1px solid var(--line);background:#fff}
   </style>
 
-  <!-- qrcodejs (UMD) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    // --------- Environnement ----------
+    const HOST = location.hostname;
+    const FIREBASE_ALLOWED = (
+      HOST === 'localhost' ||
+      HOST === '127.0.0.1' ||
+      HOST === 'jads.ca' ||
+      HOST === 'www.jads.ca' ||
+      HOST === 'jeffb1959.github.io'
+    );
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-      authDomain: "soireecartev2.firebaseapp.com",
-      projectId: "soireecartev2",
-      storageBucket: "soireecartev2.firebasestorage.app",
-      messagingSenderId: "784781686361",
-      appId: "1:784781686361:web:033693cb22fb1a55af2348"
-    };
+    const qs = new URLSearchParams(location.search);
+    const CODE = (qs.get('code') || localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
+    if(!CODE){ alert('Code de soirée manquant'); }
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db   = getFirestore(app);
+    // --------- Helpers ----------
+    const $  = (id)=>document.getElementById(id);
+    const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const sanitizeName = (s)=> String(s||'').replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim().slice(0,48);
 
-    const $ = (id)=>document.getElementById(id);
-    const qs = (k)=>new URLSearchParams(location.search).get(k);
-    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
-
-    const PLAYERS_PAGE = 'confirmation_joueurs.html';
-    let code   = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
-    const isHost = (qs('host') === '1');
-
-    function joinURL(){
-      const dir = location.href.substring(0, location.href.lastIndexOf('/') + 1);
-      return `${dir}${PLAYERS_PAGE}?code=${code}`;
-    }
-    function allConfirmed(players){ return players?.length>0 && players.every(p=>!!p.confirmed); }
-
-    function renderQR(){
-      const container = $('qr');
-      container.innerHTML = '';
-
-      if (window.QRCode) {
-        new window.QRCode(container, {
-          text: joinURL(),
-          width: 320,
-          height: 320,
-          correctLevel: window.QRCode.CorrectLevel.M
-        });
-      } else {
-        container.innerHTML = '<div class="muted">QR indisponible</div>';
-      }
-
-      const url = joinURL();
-      const link = $('qrText');
-      link.textContent = url;
-      link.href = url;
-    }
-
-    function renderPlayers(players){
-      const root = $('players');
-      root.innerHTML = '';
-      (players||[]).slice().sort((a,b)=>a.order-b.order).forEach(p=>{
-        const line = document.createElement('div');
-        const state = p.confirmed ? '<span class="chip ok">Confirmé ✓</span>' : '<span class="chip wait">En attente…</span>';
-        line.innerHTML = `${p.order+1}. ${p.name} — ${state}`;
-        root.appendChild(line);
+    function render(players){
+      const list = $('players');
+      list.innerHTML = '';
+      players.slice().sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
+        const li = document.createElement('li');
+        const name = esc(p.name || `Joueur ${i+1}`);
+        const ok = p.confirmed ? `<span class="pill ok">Confirmé</span>` : `<span class="pill wait">En attente</span>`;
+        li.innerHTML = `<span>${name}</span><span>${ok}</span>`;
+        list.appendChild(li);
       });
+      $('count').textContent = String(players.length);
+      $('confirmed').textContent = String(players.filter(p=>p.confirmed).length);
     }
 
-    signInAnonymously(auth).catch(()=>{});
-    onAuthStateChanged(auth, (user)=>{
-      if(!user) return;
-      if(!isHost){
-        location.href = `confirmation_joueurs.html?code=${code}`;
-        return;
-      }
-      if(!code){
-        alert('Code manquant'); location.href='index.html'; return;
-      }
-      $('titleCode').textContent = `#${code}`;
-      renderQR();
+    function setQR(url){
+      // Utilise l'API Chart de Google pour générer un QR simple côté client
+      const u = 'https://chart.googleapis.com/chart?cht=qr&chs=260x260&chld=M|0&chl=' + encodeURIComponent(url);
+      $('qr').src = u;
+      $('joinLink').textContent = url;
+      $('joinLink').href = url;
+    }
 
-      const ref = doc(db, 'soirees', code);
-      onSnapshot(ref, (snap)=>{
-        if(!snap.exists()) return;
-        const data = snap.data();
-        renderPlayers(data.players||[]);
-        if(allConfirmed(data.players)){
-          location.href = `selection_jeux.html?code=${code}`;
+    // --------- SANDBOX store ----------
+    const LS_KEY = 'sc_sandbox_soirees';
+    const storeRead  = ()=>{ try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}} };
+    const storeWrite = (obj)=>{ try{localStorage.setItem(LS_KEY, JSON.stringify(obj))}catch{} };
+
+    // --------- API (prod / sandbox) ----------
+    let api = null; // { init(), watch(cb), updateStatus(newStatus?) }
+
+    if (FIREBASE_ALLOWED) {
+      (async () => {
+        try{
+          const [{ initializeApp }, { getAuth, signInAnonymously }, { getFirestore, doc, onSnapshot, updateDoc }] = await Promise.all([
+            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js'),
+            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js'),
+            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js'),
+          ]);
+
+          const firebaseConfig = {
+            apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+            authDomain: "soireecartev2.firebaseapp.com",
+            projectId: "soireecartev2",
+            storageBucket: "soireecartev2.firebasestorage.app",
+            messagingSenderId: "784781686361",
+            appId: "1:784781686361:web:033693cb22fb1a55af2348"
+          };
+
+          const app = initializeApp(firebaseConfig);
+          const auth = getAuth(app);
+          const db   = getFirestore(app);
+          try{ await signInAnonymously(auth); }catch{}
+
+          api = {
+            async init(){ /* rien de plus */ },
+            watch(cb){
+              const ref = doc(db,'soirees', CODE);
+              return onSnapshot(ref, (snap)=>{
+                if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
+                cb(snap.data());
+              }, (err)=>{
+                $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
+              });
+            },
+            async updateStatus(status){
+              const ref = doc(db,'soirees', CODE);
+              await updateDoc(ref, { status });
+            }
+          };
+
+          start();
+        }catch(e){
+          setupSandbox(); // fallback si import échoue
+          start();
         }
+      })();
+    } else {
+      setupSandbox();
+      start();
+    }
+
+    function setupSandbox(){
+      api = {
+        async init(){ /* no-op */ },
+        watch(cb){
+          // tick local: relit le store à intervalle fixe
+          const t = setInterval(()=>{
+            const data = storeRead()[CODE];
+            if(!data){ $('error').style.display='block'; $('error').textContent='(SANDBOX) Soirée locale introuvable.'; return; }
+            cb(data);
+          }, 600);
+          return ()=>clearInterval(t);
+        },
+        async updateStatus(status){
+          const store = storeRead();
+          if(!store[CODE]) return;
+          store[CODE].status = status;
+          storeWrite(store);
+        }
+      };
+    }
+
+    // --------- Boot ---------
+    let unwatch = null;
+    function start(){
+      $('code').textContent = CODE;
+      const joinUrl = `${location.origin}/confirmation_joueurs.html?code=${CODE}`;
+      setQR(joinUrl);
+
+      if (navigator.share) {
+        $('btnShare').style.display = '';
+        $('btnShare').addEventListener('click', async ()=>{
+          try{ await navigator.share({ title: 'Rejoindre la soirée', text: 'Clique pour confirmer ta présence', url: joinUrl }); }catch{}
+        });
+      }
+
+      $('btnCopy').addEventListener('click', async ()=>{
+        try{ await navigator.clipboard.writeText(joinUrl); $('btnCopy').textContent = 'Lien copié ✓'; setTimeout(()=>$('btnCopy').textContent='Copier le lien',1200);}catch{}
       });
-    });
+
+      if(unwatch) unwatch();
+      unwatch = api.watch((data)=>{
+        const players = Array.isArray(data.players)? data.players : [];
+        render(players);
+      });
+    }
   </script>
 </head>
 <body>
   <main class="wrap">
     <section class="card grid">
-      <h1>Invitation joueurs <span class="muted" id="titleCode">#</span></h1>
-      <div id="qr" class="grid" style="place-items:center"></div>
-      <div class="muted">Scannez le QR ou ouvrez : <a id="qrText" class="link" href="#" target="_blank" rel="noopener"></a></div>
+      <h1>Écran de l’hôte – Code <span class="pill mono" id="code">----</span></h1>
+      <p class="muted">Demande aux joueurs de scanner le code QR ou d’ouvrir le lien ci-dessous pour confirmer leur présence.</p>
+      <div class="columns">
+        <div class="row">
+          <img id="qr" class="qr" alt="QR d’invitation" />
+          <a id="joinLink" class="mono" target="_blank" rel="noopener">—</a>
+          <div>
+            <button class="btn" id="btnCopy">Copier le lien</button>
+            <button class="btn ghost" id="btnShare" style="display:none">Partager…</button>
+          </div>
+          <div id="error" class="err" role="alert"></div>
+        </div>
+        <div class="row">
+          <h2>Présences</h2>
+          <p class="muted">Confirmés: <span class="pill" id="confirmed">0</span> / <span class="pill" id="count">0</span></p>
+          <ul id="players"></ul>
+        </div>
+      </div>
     </section>
-    <section class="card grid">
-      <h2>État des confirmations</h2>
-      <div id="players" class="players"></div>
-    </section>
-    <div class="muted" style="text-align:center">v2.6 • QR local (qrcodejs UMD)</div>
   </main>
 </body>
 </html>
