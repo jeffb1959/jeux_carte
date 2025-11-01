@@ -1,0 +1,139 @@
+<!--
+  Page Hôte — attente_confirmation.html
+  Version: v2.6 (2025-10-31)
+  Correctifs:
+    - Renommage fichier (…confirmantion → …confirmation)
+    - Lien vers confirmation_joueurs.html conservé
+    - QR: qrcodejs UMD
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Attente de confirmation hôte</title>
+  <style>
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
+    .wrap{max-width:760px;margin:0 auto;padding:16px;display:grid;gap:16px}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 0;font-size:1.8rem}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:12px}
+    .players{display:grid;gap:8px}
+    .chip{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid #243252;background:#0f1a30}
+    .ok{color:#22c55e} .wait{color:#ffd166}
+    a.link{color:var(--accent);text-decoration:none;word-break:break-all}
+    a.link:hover{text-decoration:underline}
+    #qr > img, #qr > canvas { width: 320px; height: 320px; image-rendering: pixelated; }
+  </style>
+
+  <!-- qrcodejs (UMD) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    const $ = (id)=>document.getElementById(id);
+    const qs = (k)=>new URLSearchParams(location.search).get(k);
+    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
+
+    const PLAYERS_PAGE = 'confirmation_joueurs.html';
+    let code   = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+    const isHost = (qs('host') === '1');
+
+    function joinURL(){
+      const dir = location.href.substring(0, location.href.lastIndexOf('/') + 1);
+      return `${dir}${PLAYERS_PAGE}?code=${code}`;
+    }
+    function allConfirmed(players){ return players?.length>0 && players.every(p=>!!p.confirmed); }
+
+    function renderQR(){
+      const container = $('qr');
+      container.innerHTML = '';
+
+      if (window.QRCode) {
+        new window.QRCode(container, {
+          text: joinURL(),
+          width: 320,
+          height: 320,
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+      } else {
+        container.innerHTML = '<div class="muted">QR indisponible</div>';
+      }
+
+      const url = joinURL();
+      const link = $('qrText');
+      link.textContent = url;
+      link.href = url;
+    }
+
+    function renderPlayers(players){
+      const root = $('players');
+      root.innerHTML = '';
+      (players||[]).slice().sort((a,b)=>a.order-b.order).forEach(p=>{
+        const line = document.createElement('div');
+        const state = p.confirmed ? '<span class="chip ok">Confirmé ✓</span>' : '<span class="chip wait">En attente…</span>';
+        line.innerHTML = `${p.order+1}. ${p.name} — ${state}`;
+        root.appendChild(line);
+      });
+    }
+
+    signInAnonymously(auth).catch(()=>{});
+    onAuthStateChanged(auth, (user)=>{
+      if(!user) return;
+      if(!isHost){
+        location.href = `confirmation_joueurs.html?code=${code}`;
+        return;
+      }
+      if(!code){
+        alert('Code manquant'); location.href='index.html'; return;
+      }
+      $('titleCode').textContent = `#${code}`;
+      renderQR();
+
+      const ref = doc(db, 'soirees', code);
+      onSnapshot(ref, (snap)=>{
+        if(!snap.exists()) return;
+        const data = snap.data();
+        renderPlayers(data.players||[]);
+        if(allConfirmed(data.players)){
+          location.href = `selection_jeux.html?code=${code}`;
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card grid">
+      <h1>Invitation joueurs <span class="muted" id="titleCode">#</span></h1>
+      <div id="qr" class="grid" style="place-items:center"></div>
+      <div class="muted">Scannez le QR ou ouvrez : <a id="qrText" class="link" href="#" target="_blank" rel="noopener"></a></div>
+    </section>
+    <section class="card grid">
+      <h2>État des confirmations</h2>
+      <div id="players" class="players"></div>
+    </section>
+    <div class="muted" style="text-align:center">v2.6 • QR local (qrcodejs UMD)</div>
+  </main>
+</body>
+</html>

@@ -5,7 +5,7 @@
     - 🔒 Liage d’appareil par UID anonyme Firebase:
       • un téléphone ne peut confirmer qu’un seul joueur
       • un joueur ne peut pas être confirmé par 2 téléphones
-    - Lien de dépannage vers attente_confirmantion.html?code=XXXX&host=1
+    - Lien de dépannage vers attente_confirmation.html?code=XXXX&host=1
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -66,7 +66,7 @@
     const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
 
     // Lien de dépannage vers la page hôte (on garde le nom tel qu'utilisé dans le projet)
-    const HOST_PAGE_NAME = 'attente_confirmantion.html';
+    const HOST_PAGE_NAME = 'attente_confirmation.html';
 
     let myUid   = null;   // UID anonyme de CE téléphone
     let myOrder = null;   // index du joueur lié à CE téléphone (si déjà lié)
