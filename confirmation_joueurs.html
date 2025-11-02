@@ -1,12 +1,4 @@
-<!--
-  Soirée de carte – CONFIRMATION JOUEURS
-  Version: v2.5 (2025-10-31)
-  Rôle:
-    - Le joueur ouvre le lien ?code=XXXX
-    - Il choisit son nom dans la liste et confirme, ou s’ajoute s’il n’est pas listé
-    - Firebase (prod) / SANDBOX (localStorage) automatique
--->
-
+<!-- v2.13 – 2025-11-01 – Firestore only + liaison appareil → joueur (deviceId) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -17,9 +9,9 @@
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
     .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .card{background:rgba(17,26,46,0.85);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px)}
     h1{margin:4px 0 0;font-size:1.7rem}
     .muted{color:var(--muted)}
     .btn{appearance:none;border:none;cursor:pointer;padding:10px 14px;border-radius:12px;font-weight:700;background:var(--accent);color:#0c111b}
@@ -27,42 +19,69 @@
     .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
     ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
     li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px dashed var(--line);border-radius:12px}
-    input[type="text"]{width:100%;font-size:1.05rem;padding:12px 14px;border-radius:12px;border:2px solid transparent;background:#0f1a30;color:var(--text);outline:none}
-    input[type="text"]:focus{border-color:var(--accent)}
     .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#0f1a30}
     .ok{color:#22c55e}
+    .warn{color:#f59e0b}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
   </style>
 
   <script type="module">
-    // --------- Environnement ----------
-    const HOST = location.hostname;
-    const FIREBASE_ALLOWED = (
-      HOST === 'localhost' ||
-      HOST === '127.0.0.1' ||
-      HOST === 'jads.ca' ||
-      HOST === 'www.jads.ca' ||
-      HOST === 'jeffb1959.github.io'
-    );
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    const qs = new URLSearchParams(location.search);
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    const qs   = new URLSearchParams(location.search);
     const CODE = (qs.get('code') || localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
     if(!CODE){ alert('Code de soirée manquant'); }
 
-    // --------- Helpers ----------
     const $  = (id)=>document.getElementById(id);
     const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const sanitizeName = (s)=> String(s||'').replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim().slice(0,48);
+
+    // --- Liaison appareil (deviceId persistant par navigateur) ---
+    function getDeviceId(){
+      const key = 'sc_deviceId';
+      let id = localStorage.getItem(key);
+      if(!id){
+        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
+          (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16)
+        );
+        localStorage.setItem(key,id);
+      }
+      return id;
+    }
+    const DEVICE_ID = getDeviceId();
 
     function render(players){
       const list = $('players');
       list.innerHTML = '';
+
+      const myIdx = players.findIndex(p=> p && p.deviceId === DEVICE_ID);
+
       players.slice().sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
         const li = document.createElement('li');
         const name = esc(p.name || `Joueur ${i+1}`);
+        const isMine  = p.deviceId === DEVICE_ID;
+        const claimed = !!p.deviceId;
+
         const right = p.confirmed
-          ? `<span class="pill ok">Confirmé ✓</span>`
-          : `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`;
+          ? `<span class="pill ok">Confirmé ✓${isMine?' (mon appareil)':''}</span>`
+          : (isMine
+              ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
+              : (!claimed && (myIdx === -1)
+                  ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
+                  : `<span class="pill">Réservé</span>`));
+
         li.innerHTML = `<span>${name}</span><span>${right}</span>`;
         list.appendChild(li);
       });
@@ -70,164 +89,70 @@
       list.querySelectorAll('button[data-act="confirm"]').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const idx = Number(btn.getAttribute('data-idx'));
-          await api.confirmIndex(idx);
+          await confirmIndex(idx);
         });
       });
     }
 
-    // --------- SANDBOX store ----------
-    const LS_KEY = 'sc_sandbox_soirees';
-    const storeRead  = ()=>{ try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}} };
-    const storeWrite = (obj)=>{ try{localStorage.setItem(LS_KEY, JSON.stringify(obj))}catch{} };
+    async function confirmIndex(idx){
+      const ref = doc(db,'soirees', CODE);
+      const snap = await getDoc(ref);
+      if(!snap.exists()) throw new Error('Soirée introuvable');
+      const data = snap.data();
+      const players = Array.isArray(data.players)? data.players.slice():[];
 
-    // --------- API (prod / sandbox) ----------
-    let api = null; // { init(), watch(cb), confirmIndex(i), addName(name) }
+      // 1) L'appareil a-t-il déjà un joueur associé ?
+      const myIdx = players.findIndex(p => p && p.deviceId === DEVICE_ID);
+      if(myIdx !== -1 && myIdx !== idx){
+        $('error').style.display='block';
+        $('error').textContent = 'Cet appareil est déjà associé à un autre joueur pour cette soirée.';
+        return;
+      }
 
-    if (FIREBASE_ALLOWED) {
-      (async () => {
-        try{
-          const [{ initializeApp }, { getAuth, signInAnonymously }, { getFirestore, doc, onSnapshot, updateDoc, getDoc, setDoc, serverTimestamp }] = await Promise.all([
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js'),
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js'),
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js'),
-          ]);
+      // 2) Le joueur choisi est-il déjà associé à un autre appareil ?
+      if(players[idx]?.deviceId && players[idx].deviceId !== DEVICE_ID){
+        $('error').style.display='block';
+        $('error').textContent = 'Ce nom est déjà confirmé sur un autre appareil.';
+        return;
+      }
 
-          const firebaseConfig = {
-            apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-            authDomain: "soireecartev2.firebaseapp.com",
-            projectId: "soireecartev2",
-            storageBucket: "soireecartev2.firebasestorage.app",
-            messagingSenderId: "784781686361",
-            appId: "1:784781686361:web:033693cb22fb1a55af2348"
-          };
-
-          const app = initializeApp(firebaseConfig);
-          const auth = getAuth(app);
-          const db   = getFirestore(app);
-          try{ await signInAnonymously(auth); }catch{}
-
-          async function getData(){
-            const snap = await getDoc(doc(db,'soirees', CODE));
-            if(!snap.exists()) throw new Error('Soirée introuvable');
-            return snap.data();
-          }
-
-          api = {
-            async init(){ /* no-op */ },
-            watch(cb){
-              const ref = doc(db,'soirees', CODE);
-              return onSnapshot(ref, (snap)=>{
-                if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
-                cb(snap.data());
-              }, (err)=>{
-                $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
-              });
-            },
-            async confirmIndex(idx){
-              const data = await getData();
-              const players = Array.isArray(data.players)? data.players.slice():[];
-              if(!players[idx]) return;
-              players[idx] = { ...players[idx], confirmed:true };
-              await updateDoc(doc(db,'soirees', CODE), { players });
-            },
-            async addName(name){
-              const data = await getData();
-              const players = Array.isArray(data.players)? data.players.slice():[];
-              const cleaned = sanitizeName(name);
-              if(!cleaned) throw new Error('Nom invalide');
-              players.push({ name: cleaned, order: players.length, confirmed:true });
-              await updateDoc(doc(db,'soirees', CODE), { players, playerCount: players.length });
-            }
-          };
-
-          start();
-        }catch(e){
-          setupSandbox();
-          start();
-        }
-      })();
-    } else {
-      setupSandbox();
-      start();
+      // 3) Lier l'appareil et confirmer
+      players[idx] = { ...players[idx], deviceId: DEVICE_ID, confirmed: true };
+      await updateDoc(ref, { players });
+      $('error').style.display='none';
     }
 
-    function setupSandbox(){
-      api = {
-        async init(){ /* no-op */ },
-        watch(cb){
-          const t = setInterval(()=>{
-            const data = storeRead()[CODE];
-            if(!data){ $('error').style.display='block'; $('error').textContent='(SANDBOX) Soirée locale introuvable.'; return; }
-            cb(data);
-          }, 600);
-          return ()=>clearInterval(t);
-        },
-        async confirmIndex(idx){
-          const store = storeRead();
-          if(!store[CODE] || !store[CODE].players) return;
-          if(!store[CODE].players[idx]) return;
-          store[CODE].players[idx].confirmed = true;
-          storeWrite(store);
-        },
-        async addName(name){
-          const store = storeRead();
-          if(!store[CODE]) return;
-          const cleaned = sanitizeName(name);
-          if(!cleaned) throw new Error('Nom invalide');
-          const arr = store[CODE].players || [];
-          arr.push({ name: cleaned, order: arr.length, confirmed:true });
-          store[CODE].players = arr;
-          store[CODE].playerCount = arr.length;
-          storeWrite(store);
-        }
-      };
-    }
-
-    // --------- Boot ---------
+    // Watch realtime
     let unwatch = null;
     function start(){
       $('code').textContent = CODE;
 
-      // Choix dans la liste existante
       if(unwatch) unwatch();
-      unwatch = api.watch((data)=>{
+      const ref = doc(db,'soirees', CODE);
+      unwatch = onSnapshot(ref, (snap)=>{
+        if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
+        const data = snap.data();
         const players = Array.isArray(data.players)? data.players : [];
         render(players);
-      });
-
-      // Ajout manuel si nom absent
-      $('btnAdd').addEventListener('click', async ()=>{
-        const name = sanitizeName($('name').value);
-        if(!name){ $('error').style.display='block'; $('error').textContent='Entre un nom valide.'; return; }
-        $('error').style.display='none';
-        try{
-          await api.addName(name);
-          $('name').value = '';
-        }catch(err){
-          $('error').style.display='block'; $('error').textContent = err?.message||err;
-        }
+      }, (err)=>{
+        $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
       });
     }
+
+    window.addEventListener('DOMContentLoaded', start);
   </script>
 </head>
 <body>
   <main class="wrap">
     <section class="card">
       <h1>Confirmer ma présence – Code <span class="pill" id="code">----</span></h1>
-      <p class="muted">Si ton nom est dans la liste, clique <b>C’est moi</b>. Sinon, ajoute ton nom ci-dessous.</p>
+      <p class="muted">Clique sur ton nom pour te confirmer. Un appareil ne peut confirmer <b>qu’un</b> joueur.</p>
 
       <ul id="players"></ul>
 
-      <div class="card" style="margin-top:12px">
-        <h2>Mon nom n’est pas dans la liste</h2>
-        <div style="display:grid;gap:10px">
-          <input id="name" type="text" placeholder="Ton nom ou surnom" />
-          <button class="btn" id="btnAdd">M’ajouter et confirmer</button>
-        </div>
-      </div>
-
       <div id="error" class="err" role="alert"></div>
     </section>
+    <div class="footer" style="text-align:center;color:var(--muted)">v2.13 • Firestore-only • Liaison appareil activée</div>
   </main>
 </body>
 </html>
