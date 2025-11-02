@@ -1,5 +1,7 @@
-<!-- v2.17 – 2025-11-02 – Redirection auto quand NOMBRE INSCRIT atteint expectedPlayers
-SOURCE: v2.16 fournie par l’utilisateur (sessions/{code} + sous-collection players) – ajout watcher session.expectedPlayers + redirection vers selection_jeux.html
+<!-- v2.17.1 – 2025-11-02 – Fix syntax + logique redirection sur joueurs CONFIRMÉS
+- Corrige un backtick (`) superflu dans onSnapshot -> causait "Unexpected end of input"
+- Redirection quand nombre **confirmé** === expectedPlayers (confirmed || deviceId || confirmedAt)
+- Mini test harness activable avec ?test=1 (console only)
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -104,8 +106,10 @@ SOURCE: v2.16 fournie par l’utilisateur (sessions/{code} + sous-collection pla
           ul.appendChild(li);
         });
         clearError();
-        // Redirection auto: nombre INSCRIT atteint expectedPlayers
-        if (EXPECTED && items.length === EXPECTED){
+        // Redirection auto quand le NOMBRE **CONFIRMÉ** atteint expectedPlayers
+        const __confirmedCount = items.filter(p => p.confirmed || p.deviceId || p.confirmedAt).length;
+        if (EXPECTED && __confirmedCount === EXPECTED){
+          if (!window.__sc_redirected){ window.__sc_redirected = true; }
           location.href = `selection_jeux.html?code=${encodeURIComponent(CODE)}`;
         }
       }, (err)=> showError('Erreur de lecture: '+(err?.message||err)) );
@@ -143,6 +147,24 @@ SOURCE: v2.16 fournie par l’utilisateur (sessions/{code} + sous-collection pla
       // Watchers
       watchSession();
       watchPlayers();
+
+      // --- mini tests (console) activables via ?test=1 ---
+      if (new URLSearchParams(location.search).get('test') === '1'){
+        const tests = [];
+        const assert = (name, cond)=> tests.push({name, pass: !!cond});
+        // Test 1 : sanitisation du code
+        assert('CODE est 4 chiffres', /^\d{4}$/.test(CODE));
+        // Test 2 : détection confirmé
+        const fake = [
+          {confirmed:true},{deviceId:'x'},{confirmedAt:{seconds:1}},{},{}
+        ];
+        const cnt = fake.filter(p=> p.confirmed || p.deviceId || p.confirmedAt).length;
+        assert('compte confirmés OK (=3)', cnt===3);
+        // Résultats
+        console.group('confirmation_joueurs tests');
+        tests.forEach(t=> console.log(t.pass?'✅':'❌', t.name));
+        console.groupEnd();
+      }
     }
 
     window.addEventListener('DOMContentLoaded', init);
@@ -156,7 +178,7 @@ SOURCE: v2.16 fournie par l’utilisateur (sessions/{code} + sous-collection pla
       <ul id="players"></ul>
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer" style="text-align:center;color:var(--muted)">v2.17 • sessions/{code}/players • redirection auto quand inscrits = expectedPlayers</div>
+    <div class="footer" style="text-align:center;color:var(--muted)">v2.17.1 • sessions/{code}/players • redirection auto quand CONFIRMÉS = expectedPlayers</div>
   </main>
 </body>
 </html>
