@@ -1,30 +1,60 @@
-<!-- v2.6.2 – 2025-11-02 – Fix Firestore path + guards + tests
-  - Corrige l’erreur "Invalid collection reference sessions/players" en exigeant un code valide et en ciblant sessions/{code}/players
-  - Ajoute un garde: si codeClean n’est pas 4 chiffres → pas d’abonnement Firestore
-  - Sépare les listeners: 1) session (expectedPlayers) 2) players (liste) — plus de onSnapshot imbriqué
-  - Redirection uniquement quand **confirmés** === expectedPlayers
-  - Mini tests intégrés activables via ?test=1 (console)
+<!-- v2.6 – 2025-11-02 – Attente Confirmation + Liste en temps réel
+  - QR robuste GitHub Pages (chemin relatif du dépôt)
+  - Liste des joueurs en temps réel (sessions/{code}/players)
+  - Statut "Confirmé" / "En attente" + compteur X / expectedPlayers
+  - **NOUVEAU** : dès que le **nombre de joueurs inscrits** == **expectedPlayers**, redirection automatique vers `selection_jeux.html` pour **tous** les appareils
 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Attente Confirmation</title>
+  <title>Soirée de cartes – Attente de confirmation</title>
   <style>
-    body {font-family: system-ui, sans-serif; background: #0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed; color: #f5f7fb; margin: 0; min-height: 100vh; display: flex; justify-content: center; align-items: center;}
-    main.card {background: rgba(17,26,46,0.85); border-radius: 16px; padding: 24px; width: min(500px,90vw); box-shadow: 0 8px 24px rgba(0,0,0,.4); text-align: center;}
-    h1 {margin-top: 0;}
-    ul {list-style: none; padding: 0; margin: 10px 0;}
-    li {padding: 8px 12px; border-bottom: 1px solid #243252; display: flex; justify-content: space-between;}
-    .pill {padding: 4px 10px; border-radius: 999px; background: #1d2a45;}
-    .ok {color: #22c55e;}
-    .wait {color: #f59e0b;}
-    .err {color:#ffd6db;background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:10px;display:none;margin-top:8px}
+    :root{ --bg:#0b1220; --text:#f5f7fb; --accent:#4fd1c5; --line:#243252; --muted:#cfe1ff; --ok:#34d399; --wait:#f59e0b; }
+    body{
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      color:var(--text);
+      margin:0;
+      padding:24px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      background:url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;
+    }
+    .card{
+      background:rgba(17,26,46,0.9);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:20px;
+      box-shadow:0 8px 24px rgba(0,0,0,.25);
+      backdrop-filter:blur(4px);
+      width:min(420px,92vw);
+    }
+    h1{font-size:1.5rem;margin-bottom:10px;text-align:center}
+    .code{font-size:2rem;letter-spacing:.15rem;font-weight:800;background:#0f1a33;border:1px dashed #28406d;border-radius:12px;padding:10px 16px;display:block;margin:8px auto;text-align:center}
+    #qrcode{margin:16px auto;width:220px;height:220px}
+    button{cursor:pointer;font-weight:700;padding:10px 16px;border:none;border-radius:12px;background:var(--accent);color:#001018;font-size:1rem}
+    button:active{transform:scale(.98)}
+    .muted{color:var(--muted);font-size:.9rem;margin-top:8px;text-align:center}
+    .row{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:8px}
+    input{padding:10px 12px;border-radius:10px;border:1px solid #2a3c62;background:#0f1a33;color:var(--text);width:140px;text-align:center}
+    .error{color:#ff8080;font-size:.95rem;display:none;margin-top:6px;text-align:center}
+
+    .list{margin-top:12px;display:grid;gap:8px}
+    .player{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #243252;border-radius:12px;background:#0f1a33}
+    .badge{font-size:.75rem;border-radius:999px;padding:3px 8px;border:1px solid #30507f}
+    .ok{background:rgba(52,211,153,.12);color:#bdf6e1;border-color:#2d7b66}
+    .wait{background:rgba(245,158,11,.12);color:#f9d59b;border-color:#7a5a09}
+    .count{margin-top:6px;text-align:center;color:#b8c7e6;font-size:.9rem}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getFirestore, doc, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -37,98 +67,162 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app);
 
-    const url = new URL(location.href);
-    const code = url.searchParams.get('code');
-    const codeClean = (code || '').replace(/\D/g,'').slice(0,4);
+    const $ = (id)=> document.getElementById(id);
+    const codeEl = $('code');
+    const qrContainer = $('qrcode');
+    const copyBtn = $('copy');
+    const enterRow = $('enterRow');
+    const codeInput = $('codeInput');
+    const showBtn = $('show');
+    const err = $('err');
+    const listEl = $('list');
+    const countEl = $('count');
 
-    const $ = id => document.getElementById(id);
+    function showError(msg){ err.textContent = msg; err.style.display = 'block'; }
+    function hideError(){ err.style.display = 'none'; }
 
-    function showErr(msg){ const el=$('err'); el.textContent=msg; el.style.display='block'; }
-    function hideErr(){ const el=$('err'); el.style.display='none'; }
-
+    function makeBaseUrl(){
+      const path = location.pathname.replace(/[^/]+$/, '');
+      return location.origin + path;
+    }
+    function buildJoinLink(code){
+      const clean = String(code||'').trim();
+      return makeBaseUrl() + 'confirmation_joueurs.html?code=' + encodeURIComponent(clean);
+    }
     function buildPlayLink(code){
-      return `selection_jeux.html?code=${encodeURIComponent(code)}`;
+      const clean = String(code||'').trim();
+      return makeBaseUrl() + 'selection_jeux.html?code=' + encodeURIComponent(clean);
+    }
+    function renderQR(link){
+      qrContainer.innerHTML = '';
+      if (!window.QRCode){ showError('Bibliothèque QR non chargée'); return; }
+      new QRCode(qrContainer, { text: link, width: 220, height: 220, colorDark: "#000", colorLight: "#fff", correctLevel: QRCode.CorrectLevel.H });
+    }
+
+    async function ensureAuth(){
+      return new Promise(async (resolve)=>{
+        if (auth.currentUser) return resolve(auth.currentUser);
+        const stop = onAuthStateChanged(auth, (u)=>{ if(u){ stop(); resolve(u);} });
+        try{ await signInAnonymously(auth); }catch{ resolve(null); }
+      });
+    }
+
+    async function findCodeFromURL(){
+      const url = new URL(window.location.href);
+      return (url.searchParams.get('code')||'').trim();
+    }
+    async function findLatestHostSessionCode(uid){
+      const qy = query(collection(db,'sessions'), where('hostUid','==', uid), orderBy('createdAt','desc'), limit(1));
+      const snap = await getDocs(qy);
+      if (!snap.empty){ return snap.docs[0].data()?.code || ''; }
+      return '';
     }
 
     function renderPlayers(players, expected){
-      const ul = $('players');
-      ul.innerHTML = '';
-      players.forEach(p => {
-        const li = document.createElement('li');
-        const status = p.confirmed || p.deviceId || p.confirmedAt ? '<span class="ok">Confirmé</span>' : '<span class="wait">En attente</span>';
-        li.innerHTML = `<span>${p.name || 'Joueur'}</span><span class="pill">${status}</span>`;
-        ul.appendChild(li);
+      listEl.innerHTML = '';
+      let confirmed = 0;
+      players.forEach((p)=>{
+        const ok = !!(p.confirmed || p.deviceId || p.confirmedAt);
+        if (ok) confirmed++;
+        const row = document.createElement('div');
+        row.className = 'player';
+        row.innerHTML = `<div><strong>${p.name||'Joueur'}</strong> <span class="muted">(siège ${p.seatIndex})</span></div>`;
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + (ok ? 'ok' : 'wait');
+        badge.textContent = ok ? 'Confirmé' : 'En attente';
+        row.appendChild(badge);
+        listEl.appendChild(row);
       });
-      const confirmedCount = players.filter(p => p.confirmed || p.deviceId || p.confirmedAt).length;
-      $('counter').textContent = `${confirmedCount}/${expected ?? '?'}`;
-      // Redirection automatique uniquement si tous les joueurs sont confirmés
-      if (expected && confirmedCount === expected){
-        if (!window.__sc_redirected){
-          window.__sc_redirected = true;
-          location.href = buildPlayLink(codeClean);
+      const total = players.length;
+      countEl.textContent = expected ? `${confirmed}/${expected} confirmés` : `${confirmed}/${total} confirmés`;
+    }
+
+    function subscribePlayers(code){
+      // Session meta (pour expectedPlayers)
+      const sessRef = doc(db,'sessions', code);
+      let expected = null;
+      getDoc(sessRef).then(s=>{ if(s.exists()) expected = s.data().expectedPlayers || null; });
+      onSnapshot(sessRef, (snap)=>{ if(snap.exists()) expected = snap.data().expectedPlayers || null; });
+
+      const qPlayers = query(collection(db,'sessions', code, 'players'), orderBy('seatIndex','asc'));
+      onSnapshot(qPlayers, (snap)=>{
+        const arr = [];
+        snap.forEach(d=> arr.push({ id:d.id, ...d.data() }));
+        renderPlayers(arr, expected);
+        // Redirection auto quand le NOMBRE **CONFIRMÉ** atteint expectedPlayers
+        const confirmedCount = arr.filter(p => p.confirmed || p.deviceId || p.confirmedAt).length;
+        if (expected && confirmedCount === expected){
+          const playLink = buildPlayLink(code);
+          if (!window.__sc_redirected){ window.__sc_redirected = true; location.href = playLink; }
+        }
+      });
+    }
+
+    async function load(){
+      hideError();
+      await ensureAuth();
+
+      let code = await findCodeFromURL();
+      if (!code){
+        if (auth.currentUser){
+          try{ code = await findLatestHostSessionCode(auth.currentUser.uid); }catch{}
         }
       }
-    }
 
-    function subscribe(code4){
-      // Listener 1: session/{code} → expectedPlayers
-      let expectedPlayers = null;
-      const sessRef = doc(db,'sessions', code4);
-      onSnapshot(sessRef, snap => {
-        expectedPlayers = snap.exists() ? (snap.data().expectedPlayers ?? null) : null;
-      });
-
-      // Listener 2: sessions/{code}/players → liste
-      const qPlayers = query(collection(db,'sessions', code4, 'players'), orderBy('seatIndex','asc'));
-      onSnapshot(qPlayers, snap => {
-        const arr = [];
-        snap.forEach(d => arr.push({ id:d.id, ...d.data() }));
-        renderPlayers(arr, expectedPlayers);
-      }, (err) => showErr('Erreur Firestore (players): '+(err?.message||err)) );
-    }
-
-    function run(){
-      $('code').textContent = codeClean || '----';
-      if (!/^\d{4}$/.test(codeClean)){
-        showErr('Code de soirée manquant ou invalide. Ouvrez cette page via le lien de l\'hôte.');
-        return; // 🔒 Empêche la création d'un chemin Firestore invalide comme "sessions/players"
-      }
-      hideErr();
-      subscribe(codeClean);
-
-      // ---- Mini tests (console) : activer avec ?test=1 ----
-      if (url.searchParams.get('test') === '1'){
-        const tests = [];
-        const assert = (name, cond)=> tests.push({name, pass: !!cond});
-        // Test 1: code est 4 chiffres
-        assert('codeClean est 4 chiffres', /^\d{4}$/.test(codeClean));
-        // Test 2: confirmedCount calcule correctement
-        const fakePlayers = [
-          { name:'A', confirmed:true },
-          { name:'B', deviceId:'x' },
-          { name:'C', confirmedAt:{seconds:1} },
-          { name:'D' }
-        ];
-        const confirmedCount = fakePlayers.filter(p=> p.confirmed || p.deviceId || p.confirmedAt).length;
-        assert('confirmedCount == 3', confirmedCount === 3);
-        // Report
-        console.group('attente_confirmation tests');
-        tests.forEach(t=> console.log(t.pass?'✅':'❌', t.name));
-        console.groupEnd();
+      if (code){
+        codeEl.textContent = code;
+        const link = buildJoinLink(code);
+        renderQR(link);
+        copyBtn.onclick = ()=>{ navigator.clipboard.writeText(link); alert('Lien copié dans le presse-papiers !'); };
+        enterRow.style.display = 'none';
+        // Abonnements temps réel
+        subscribePlayers(code);
+      }else{
+        codeEl.textContent = '----';
+        enterRow.style.display = 'flex';
       }
     }
 
-    window.addEventListener('DOMContentLoaded', run);
+    showBtn?.addEventListener('click', ()=>{
+      hideError();
+      const code = (codeInput.value||'').trim();
+      if (!/^\d{4}$/.test(code)) { showError('Entrez un code à 4 chiffres.'); return; }
+      codeEl.textContent = code;
+      const link = buildJoinLink(code);
+      renderQR(link);
+      copyBtn.onclick = ()=>{ navigator.clipboard.writeText(link); alert('Lien copié dans le presse-papiers !'); };
+      enterRow.style.display = 'none';
+      subscribePlayers(code);
+    });
+
+    load();
   </script>
 </head>
 <body>
-  <main class="card">
-    <h1>Attente des confirmations</h1>
-    <p>Code soirée : <strong id="code">----</strong></p>
-    <p>Joueurs confirmés : <span id="counter">0/?</span></p>
-    <ul id="players"></ul>
-    <div id="err" class="err" role="alert"></div>
-  </main>
+  <div class="card">
+    <h1>En attente des joueurs...</h1>
+    <div class="muted">Partagez ce code avec vos amis :</div>
+    <div id="code" class="code">----</div>
+
+    <div id="qrcode"></div>
+
+    <div id="enterRow" class="row" style="display:none">
+      <input id="codeInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="Code (4 chiffres)" />
+      <button id="show">Afficher le QR</button>
+    </div>
+
+    <div class="row">
+      <button id="copy">Copier le lien</button>
+    </div>
+
+    <div id="err" class="error"></div>
+
+    <div class="muted">Scannez le QR ou cliquez sur le lien pour rejoindre la soirée.</div>
+
+    <div class="count" id="count">0/0 confirmés</div>
+    <div class="list" id="list"></div>
+  </div>
 </body>
 </html>
