@@ -1,28 +1,22 @@
-<!--
-  Soirée de carte – INDEX
-  Version: v2.5 (2025-10-31)
-  Auteur: Jean-François + ChatGPT
-  Points clés:
-    - Connexion Firebase en prod (domaines autorisés)
-    - Fallback SANDBOX (localStorage) si domaine non autorisé
-    - UI simple: nb joueurs, noms (1 par ligne), créer & reprendre
-    - Redirection corrigée: attente_confirmation.html
--->
-
+<!-- v2.12 – 2025-11-01 – Firestore only + image d’arrière-plan -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
   <title>Soirée de carte – Accueil</title>
-
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      color:var(--text);
+      background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;
+    }
     .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .card{background:rgba(17,26,46,0.85);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px)}
     h1{margin:4px 0 0;font-size:1.8rem}
     h2{margin:0 0 6px;font-size:1.2rem;color:var(--muted)}
     .info{color:var(--muted);font-size:1rem;line-height:1.35}
@@ -41,117 +35,38 @@
   </style>
 
   <script type="module">
-    // --------- Détection environnement ----------
-    const HOST = location.hostname;
-    const FIREBASE_ALLOWED = (
-      HOST === 'localhost' ||
-      HOST === '127.0.0.1' ||
-      HOST === 'jads.ca' ||
-      HOST === 'www.jads.ca' ||
-      HOST === 'jeffb1959.github.io'
-    );
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // --------- Helpers UI ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
     const $ = (id)=>document.getElementById(id);
     const showError = (msg)=>{ const b=$('error'); b.textContent=msg; b.style.display='block'; $('ok').style.display='none'; };
     const showOk    = (msg)=>{ const b=$('ok');    b.textContent=msg; b.style.display='block'; $('error').style.display='none'; };
 
-    // --------- SANDBOX store ----------
-    const LS_KEY = 'sc_sandbox_soirees';
-    const storeRead  = ()=>{ try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}} };
-    const storeWrite = (obj)=>{ try{localStorage.setItem(LS_KEY, JSON.stringify(obj))}catch{} };
-
-    // --------- API (prod Firebase ou SANDBOX local) ----------
-    let api = null; // { initAuth(), create(code, names, n) }
-
-    if (FIREBASE_ALLOWED) {
-      (async () => {
-        try{
-          const [{ initializeApp }, { getAuth, signInAnonymously, onAuthStateChanged }, { getFirestore, doc, setDoc, serverTimestamp }] = await Promise.all([
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js'),
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js'),
-            import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js'),
-          ]);
-
-          const firebaseConfig = {
-            apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-            authDomain: "soireecartev2.firebaseapp.com",
-            projectId: "soireecartev2",
-            storageBucket: "soireecartev2.firebasestorage.app",
-            messagingSenderId: "784781686361",
-            appId: "1:784781686361:web:033693cb22fb1a55af2348"
-          };
-
-          const app = initializeApp(firebaseConfig);
-          const auth = getAuth(app);
-          const db   = getFirestore(app);
-
-          api = {
-            async initAuth(){
-              try{ await signInAnonymously(auth); }catch(e){ showError(`Auth anonyme impossible: ${e?.message||e}`); }
-              onAuthStateChanged(auth, (user)=>{
-                if(!user) return;
-                // Active les boutons à la connexion
-                $('btnStart').disabled = false;
-                $('btnJoinAsPlayer').disabled = false;
-                $('btnJoinAsHost').disabled   = false;
-              });
-            },
-            async create(code, names, n){
-              await setDoc(doc(db, 'soirees', code), {
-                code,
-                playerCount: n,
-                players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })), // hôte = index 0 confirmé
-                status: 'setup',
-                createdAt: serverTimestamp()
-              });
-            }
-          };
-
-          await api.initAuth();
-        }catch(e){
-          // Si Firebase n'est pas dispo (CSP, domaine non autorisé), bascule SANDBOX
-          setupSandbox();
-        }
-      })();
-    } else {
-      setupSandbox();
-    }
-
-    function setupSandbox(){
-      api = {
-        async initAuth(){
-          // Pas d’auth réseau: on active l’UI directement
-          $('btnStart').disabled = false;
-          $('btnJoinAsPlayer').disabled = false;
-          $('btnJoinAsHost').disabled   = false;
-        },
-        async create(code, names, n){
-          const store = storeRead();
-          store[code] = {
-            code,
-            playerCount: n,
-            players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })),
-            status: 'setup',
-            createdAt: Date.now()
-          };
-          storeWrite(store);
-        }
-      };
-      api.initAuth();
-    }
-
-    // --------- Main UI ----------
     window.addEventListener('DOMContentLoaded', () => {
       const nb   = $('playersCount');
       const list = $('playersNames');
       const btn  = $('btnStart');
 
-      // bornes 2..8
       nb.addEventListener('change', () => {
         const v = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
         nb.value = String(isNaN(v)?4:v);
       });
+
+      btn.disabled = false;
+      $('btnJoinAsPlayer').disabled = false;
+      $('btnJoinAsHost').disabled   = false;
 
       btn.addEventListener('click', async () => {
         const n = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
@@ -166,16 +81,19 @@
           return;
         }
 
-        // code hôte 4 chiffres
         const code = String(Math.floor(1000 + Math.random()*9000));
-
-        // mémo local (utile pour reprise)
         localStorage.setItem('sc_code', code);
         localStorage.setItem('sc_players', JSON.stringify(names));
         localStorage.setItem('sc_count', String(n));
 
         try{
-          await api.create(code, names, n);
+          await setDoc(doc(db, 'soirees', code), {
+            code,
+            playerCount: n,
+            players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })),
+            status: 'setup',
+            createdAt: serverTimestamp()
+          });
           showOk(`Soirée #${code} créée. Ouverture de l'écran hôte…`);
           window.location.href = `attente_confirmation.html?code=${code}&host=1`;
         }catch(err){
@@ -183,7 +101,6 @@
         }
       });
 
-      // Reprise
       const codeInput = $('resumeCode');
       const btnPlayer = $('btnJoinAsPlayer');
       const btnHost   = $('btnJoinAsHost');
@@ -205,7 +122,6 @@
     });
   </script>
 </head>
-
 <body>
   <main class="wrap">
     <section class="card grid">
@@ -221,7 +137,7 @@
       <label for="playersNames">Noms ou surnoms (une ligne par nom)</label>
       <textarea id="playersNames" placeholder="Ex.&#10;Jean-François (hôte)&#10;Lise&#10;Marc&#10;Louise"></textarea>
 
-      <button class="btn" id="btnStart" disabled>Débuter la soirée</button>
+      <button class="btn" id="btnStart">Débuter la soirée</button>
 
       <div id="error" class="err" role="alert"></div>
       <div id="ok" class="ok" role="status"></div>
@@ -232,13 +148,13 @@
       <label for="resumeCode">Code de la soirée (4 chiffres)</label>
       <input id="resumeCode" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Ex.: 1234" />
       <div class="cols">
-        <button class="btn small" id="btnJoinAsPlayer" disabled>Rejoindre comme joueur</button>
-        <button class="btn small" id="btnJoinAsHost" disabled>Reprendre comme hôte</button>
+        <button class="btn small" id="btnJoinAsPlayer">Rejoindre comme joueur</button>
+        <button class="btn small" id="btnJoinAsHost">Reprendre comme hôte</button>
       </div>
       <p class="info">Astuce : si le code est vide, on utilisera le dernier code mémorisé sur cet appareil.</p>
     </section>
 
-    <div class="footer">v2.5 • Firebase (prod) + SANDBOX (localStorage) • Hôte auto-confirmé</div>
+    <div class="footer">v2.12 • Firestore-only (avec fond Jeep)</div>
   </main>
 </body>
 </html>
