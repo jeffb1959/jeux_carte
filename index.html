@@ -1,4 +1,4 @@
-<!-- v2.2 – 2025-11-02 – Reconnexion automatique + récupération du dernier code + gestion hôte/joueur -->
+<!-- v2.5 – 2025-11-02 – Codes de soirée NUMÉRIQUES uniquement (4 chiffres). Aucune redirection auto. Deux actions : Rejoindre / Créer. -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6,20 +6,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Soirée de cartes – Accueil</title>
   <style>
-    :root { --bg:#0b1220; --text:#f5f7fb; --accent:#4fd1c5; --line:#243252; }
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg) url('image fond jeep.webp') center/cover no-repeat fixed;color:var(--text);margin:0;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;}
-    h1{font-size:2rem;margin-bottom:1rem;}
-    input,button{padding:12px 16px;border-radius:12px;border:none;font-size:1rem;}
-    input{width:140px;text-align:center;margin-right:10px;}
-    button{background:var(--accent);color:var(--bg);font-weight:700;cursor:pointer;min-width:120px;}
-    button:hover{filter:brightness(1.1);}
-    .card{background:rgba(17,26,46,0.85);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px);}
-    .error{color:#ef4444;margin-top:10px;display:none;}
+    :root { --bg:#0b1220; --text:#f5f7fb; --accent:#4fd1c5; --accent2:#60a5fa; --line:#243252; }
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text);margin:0;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center}
+    .card{background:rgba(17,26,46,0.88);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px);width:min(480px,92vw)}
+    h1{font-size:1.9rem;margin:.2rem 0 1rem}
+    .row{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap}
+    input,button{padding:12px 16px;border-radius:12px;border:none;font-size:1rem}
+    input{width:160px;text-align:center}
+    .btn{cursor:pointer;font-weight:700}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    .btn-primary{background:var(--accent);color:#001018}
+    .btn-secondary{background:var(--accent2);color:#001018}
+    .error{color:#ef4444;margin-top:10px;display:none}
+    .tip{color:#9fb1d1;font-size:.9rem;margin-top:10px}
+    .sep{height:1px;background:#1d2a45;margin:16px 0}
+    .small{font-size:.85rem;color:#9fb1d1;margin-top:6px}
   </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, serverTimestamp, collection, query, orderBy, limit, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, serverTimestamp, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -31,89 +37,106 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
     const auth = getAuth(app);
-    const db  = getFirestore(app);
 
-    // Identifiant unique du téléphone
-    function getDeviceId(){
-      const key = 'sc_deviceId';
-      let id = localStorage.getItem(key);
-      if(!id){
-        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16));
-        localStorage.setItem(key,id);
-      }
-      return id;
-    }
-    const DEVICE_ID = getDeviceId();
+    // --- helpers ---
+    const $ = (id)=> document.getElementById(id);
+    const codeInput = $('codeInput');
+    const btnJoin = $('btnJoin');
+    const btnNew = $('btnNew');
+    const errorEl = $('error');
 
-    // Récupère le dernier code de soirée
-    async function getLastSoireeCode(){
-      const q = query(collection(db,'soirees'), orderBy('createdAt','desc'), limit(1));
+    function showError(msg){ errorEl.textContent = msg; errorEl.style.display = 'block'; setTimeout(()=> errorEl.style.display='none', 4500); }
+
+    // Sanitize: chiffres seulement, 4 max
+    function sanitizeCode(x){ return String(x||'').replace(/\D/g,'').slice(0,4); }
+
+    // Génère un code numérique à 4 chiffres (1000-9999)
+    function createNewCode(){ return Math.floor(1000 + Math.random()*9000).toString(); }
+
+    async function findLatestCode(){
+      const q = query(collection(db,'sessions'), orderBy('createdAt','desc'), limit(1));
       const snap = await getDocs(q);
-      if(snap.empty) return '';
-      const docData = snap.docs[0].data();
-      return docData.code || '';
+      if (!snap.empty){ const last = snap.docs[0].data(); return (last && last.code) ? sanitizeCode(last.code) : ''; }
+      return '';
     }
 
-    async function checkAutoRejoin(){
-      const code = (localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
-      if(!code) return;
-      const ref = doc(db,'soirees', code);
-      const snap = await getDoc(ref);
-      if(!snap.exists()) return;
-      const data = snap.data();
-      const status = String(data.status||'setup');
-      if(status === 'setup' || status === 'lobby'){
-        window.location.href = `confirmation_joueurs.html?code=${code}`;
-      } else if(status === 'playing'){
-        window.location.href = `table.html?code=${code}`;
-      } else if(status === 'ended'){
-        window.location.href = `selection_jeux.html?code=${code}`;
-      }
+    async function ensureSignedIn(){
+      return new Promise(async (resolve, reject)=>{
+        const u = auth.currentUser; if (u) return resolve(u);
+        const stop = onAuthStateChanged(auth, (user)=>{ if(user){ stop(); resolve(user); } });
+        try{ await signInAnonymously(auth); }catch(e){ reject(e); }
+      });
     }
 
-    window.addEventListener('DOMContentLoaded', async ()=>{
-      await signInAnonymously(auth).catch(()=>{});
-      const lastCode = await getLastSoireeCode();
-      if(lastCode) document.getElementById('codeInput').value = lastCode;
-      checkAutoRejoin();
+    async function rememberEntrance(uid, code){
+      await setDoc(doc(db,'entrances', uid),{ code, at: serverTimestamp() },{merge:true});
+    }
 
-      document.getElementById('btnHost').addEventListener('click', async ()=>{
-        const code = String(Math.floor(1000 + Math.random()*9000));
-        await setDoc(doc(db,'soirees', code), {
-          code,
-          status:'setup',
-          createdAt: serverTimestamp(),
-          players: [],
-        });
-        localStorage.setItem('sc_code', code);
-        window.location.href = `attente_confirmation.html?code=${code}&host=1`;
-      });
+    // --- ACTION: Rejoindre comme joueur ---
+    async function handleJoin(){
+      const code = sanitizeCode(codeInput.value);
+      if (code.length !== 4) return showError('Entrez un code à 4 chiffres.');
+      try{
+        btnJoin.disabled = true;
+        await ensureSignedIn();
+        const exists = await getDoc(doc(db,'codes', code));
+        if (!exists.exists()) return showError('Code inconnu');
+        await rememberEntrance(auth.currentUser.uid, code);
+        await setDoc(doc(db,'roles', auth.currentUser.uid), { role:'player', sessionCode: code }, { merge:true });
+        window.location.href = `confirmation_joueurs.html?code=${encodeURIComponent(code)}`;
+      }catch(e){ console.error(e); showError('Erreur de connexion : '+(e?.message||e)); }
+      finally{ btnJoin.disabled = false; }
+    }
 
-      document.getElementById('btnJoin').addEventListener('click', ()=>{
-        const code = document.getElementById('codeInput').value.replace(/\D/g,'').slice(0,4);
-        if(code.length!==4){
-          const err = document.querySelector('.error');
-          err.style.display='block';
-          err.textContent='Entrez un code valide';
-          return;
-        }
-        localStorage.setItem('sc_code', code);
-        window.location.href = `confirmation_joueurs.html?code=${code}`;
-      });
+    // --- ACTION: Créer une NOUVELLE soirée (hôte) ---
+    async function handleNew(){
+      try{
+        btnNew.disabled = true;
+        const user = await ensureSignedIn();
+        const code = createNewCode();
+        await setDoc(doc(db,'codes', code), { active:true, createdAt: serverTimestamp() }, { merge:true });
+        await setDoc(doc(db,'sessions', code), { code, createdAt: serverTimestamp(), hostUid: user.uid, status: 'setup' }, { merge:true });
+        await setDoc(doc(db,'roles', user.uid), { role:'host', sessionCode: code }, { merge:true });
+        await rememberEntrance(user.uid, code);
+        window.location.href = `inscription_joueurs.html?code=${encodeURIComponent(code)}`;
+      }catch(e){ console.error(e); showError('Impossible de créer la nouvelle soirée : '+(e?.message||e)); }
+      finally{ btnNew.disabled = false; }
+    }
+
+    // --- Lifecycle ---
+    btnJoin.disabled = true; btnNew.disabled = true;
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user){ try{ await signInAnonymously(auth); }catch(e){ showError('Auth indisponible : '+(e?.message||e)); } return; }
+      btnJoin.disabled = false; btnNew.disabled = false;
+      try{ if(!codeInput.value){ codeInput.value = await findLatestCode(); } }catch{ /* ignore */ }
     });
+
+    btnJoin?.addEventListener('click', handleJoin);
+    btnNew?.addEventListener('click', handleNew);
+    codeInput?.addEventListener('input', ()=>{ codeInput.value = sanitizeCode(codeInput.value); });
+    codeInput?.addEventListener('keydown', (e)=>{ if(e.key==='Enter') handleJoin(); });
   </script>
 </head>
 <body>
   <main class="card">
     <h1>Soirée de cartes</h1>
-    <p>Rejoignez ou créez une nouvelle partie entre amis.</p>
-    <div style="margin-top:20px;display:flex;justify-content:center;align-items:center;">
-      <input id="codeInput" maxlength="4" placeholder="Code de la soirée" />
-      <button id="btnJoin">Rejoindre</button>
+
+    <div class="row" style="margin-bottom:10px">
+      <input id="codeInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="Code (4 chiffres)" />
+      <button id="btnJoin" class="btn btn-primary">Rejoindre (joueur)</button>
     </div>
-    <button id="btnHost" style="margin-top:20px;">Créer une nouvelle soirée</button>
-    <div class="error"></div>
+
+    <div class="sep"></div>
+
+    <div style="margin-top:10px">
+      <button id="btnNew" class="btn btn-secondary">Créer une NOUVELLE soirée (hôte)</button>
+      <div class="small">Un code <strong>numérique</strong> à 4 chiffres est généré automatiquement.</div>
+    </div>
+
+    <div id="error" class="error"></div>
+    <div class="tip">Astuce : le champ peut se préremplir avec le dernier code connu, mais aucune redirection n'a lieu sans votre clic.</div>
   </main>
 </body>
 </html>
