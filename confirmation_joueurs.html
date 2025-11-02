@@ -1,6 +1,5 @@
-<!-- v2.16 – 2025-11-02 – Correction "Soirée introuvable"
-CAUSE: v2.15 lisait la collection `soirees` + un tableau `players`.
-FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par seatIndex), auth anonyme avant lecture.
+<!-- v2.17 – 2025-11-02 – Redirection auto quand NOMBRE INSCRIT atteint expectedPlayers
+SOURCE: v2.16 fournie par l’utilisateur (sessions/{code} + sous-collection players) – ajout watcher session.expectedPlayers + redirection vers selection_jeux.html
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -56,6 +55,8 @@ FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par sea
     function getDeviceId(){ const k='sc_deviceId'; let id=localStorage.getItem(k); if(!id){ id=crypto.randomUUID(); localStorage.setItem(k,id);} return id; }
     const DEVICE_ID = getDeviceId();
 
+    let EXPECTED = null; // expectedPlayers
+
     async function ensureAuth(){
       return new Promise(async (resolve)=>{
         if (auth.currentUser) return resolve(auth.currentUser);
@@ -64,34 +65,29 @@ FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par sea
       });
     }
 
-    async function init(){
-      if (!/^\d{4}$/.test(CODE)){ showError('Code manquant ou invalide.'); return; }
-      $('code').textContent = CODE;
-
-      await ensureAuth();
-
-      // 1) Vérifie l'existence de sessions/{code}
+    function watchSession(){
       const sessionRef = doc(db,'sessions', CODE);
-      const sessionSnap = await getDoc(sessionRef);
-      if(!sessionSnap.exists()){
-        showError("Soirée introuvable. Demandez à l'hôte de finaliser l'inscription des joueurs.");
-        return;
-      }
+      onSnapshot(sessionRef, (snap)=>{
+        if (snap.exists()){
+          const d = snap.data();
+          EXPECTED = (typeof d.expectedPlayers === 'number') ? d.expectedPlayers : null;
+        }
+      });
+    }
 
-      // 2) Stream de la liste des joueurs: sessions/{code}/players (ordre horaire)
+    function watchPlayers(){
       const playersQ = query(collection(db,'sessions', CODE, 'players'), orderBy('seatIndex','asc'));
       onSnapshot(playersQ, (snap)=>{
         const ul = $('players');
         ul.innerHTML = '';
-        if (snap.empty){
-          const li = document.createElement('li');
-          li.textContent = "Aucun joueur saisi pour le moment...";
-          ul.appendChild(li);
-          return;
-        }
-        const mine = { has:false, name:'' };
         const items = [];
-        snap.forEach((d)=>{ const p={ id:d.id, ...d.data() }; items.push(p); if(p.deviceId===DEVICE_ID){ mine.has=true; mine.name=p.name; } });
+        let mine = { has:false, name:'' };
+        snap.forEach((d)=>{
+          const p={ id:d.id, ...d.data() };
+          items.push(p);
+          if(p.deviceId===DEVICE_ID){ mine.has=true; mine.name=p.name; }
+        });
+        // UI render
         items.forEach((p,i)=>{
           const li = document.createElement('li');
           const left = document.createElement('span');
@@ -108,6 +104,10 @@ FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par sea
           ul.appendChild(li);
         });
         clearError();
+        // Redirection auto: nombre INSCRIT atteint expectedPlayers
+        if (EXPECTED && items.length === EXPECTED){
+          location.href = `selection_jeux.html?code=${encodeURIComponent(CODE)}`;
+        }
       }, (err)=> showError('Erreur de lecture: '+(err?.message||err)) );
     }
 
@@ -126,6 +126,25 @@ FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par sea
       }catch(e){ showError('Impossible de confirmer : '+(e?.message||e)); }
     }
 
+    async function init(){
+      if (!/^\d{4}$/.test(CODE)){ showError('Code manquant ou invalide.'); return; }
+      $('code').textContent = CODE;
+
+      await ensureAuth();
+
+      // Vérifie l'existence de sessions/{code}
+      const sessionRef = doc(db,'sessions', CODE);
+      const sessionSnap = await getDoc(sessionRef);
+      if(!sessionSnap.exists()){
+        showError("Soirée introuvable. Demandez à l'hôte de finaliser l'inscription des joueurs.");
+        return;
+      }
+
+      // Watchers
+      watchSession();
+      watchPlayers();
+    }
+
     window.addEventListener('DOMContentLoaded', init);
   </script>
 </head>
@@ -137,7 +156,7 @@ FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par sea
       <ul id="players"></ul>
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer" style="text-align:center;color:var(--muted)">v2.16 • sessions/{code}/players • auth d’abord • correctif "Soirée introuvable"</div>
+    <div class="footer" style="text-align:center;color:var(--muted)">v2.17 • sessions/{code}/players • redirection auto quand inscrits = expectedPlayers</div>
   </main>
 </body>
 </html>
