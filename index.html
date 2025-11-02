@@ -1,42 +1,25 @@
-<!-- v2.12 – 2025-11-01 – Firestore only + image d’arrière-plan -->
+<!-- v2.2 – 2025-11-02 – Reconnexion automatique + récupération du dernier code + gestion hôte/joueur -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
-  <title>Soirée de carte – Accueil</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Soirée de cartes – Accueil</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      color:var(--text);
-      background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;
-    }
-    .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:rgba(17,26,46,0.85);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px)}
-    h1{margin:4px 0 0;font-size:1.8rem}
-    h2{margin:0 0 6px;font-size:1.2rem;color:var(--muted)}
-    .info{color:var(--muted);font-size:1rem;line-height:1.35}
-    label{color:var(--muted);font-size:1.05rem}
-    input[type="number"],textarea,input[type="tel"]{width:100%;font-size:1.15rem;padding:14px 16px;border-radius:14px;border:2px solid transparent;background:#0f1a30;color:var(--text);outline:none}
-    input:focus,textarea:focus{border-color:var(--accent)}
-    textarea{min-height:140px;resize:vertical}
-    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:54px;padding:14px;border-radius:14px;font-size:1.15rem;font-weight:800;color:#0c111b;background:var(--accent)}
-    .btn.small{min-height:48px;padding:12px;font-weight:700}
-    .grid{display:grid;gap:12px}
-    .cols{display:grid;gap:12px}
-    @media(min-width:640px){.cols{grid-template-columns:1fr 1fr}}
-    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
-    .ok{background:#0e2b1b;border:1px solid #1f6b3a;padding:10px;border-radius:12px;color:#d6ffe8;display:none}
-    .footer{color:var(--muted);text-align:center;font-size:.92rem}
+    :root { --bg:#0b1220; --text:#f5f7fb; --accent:#4fd1c5; --line:#243252; }
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg) url('image fond jeep.webp') center/cover no-repeat fixed;color:var(--text);margin:0;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;}
+    h1{font-size:2rem;margin-bottom:1rem;}
+    input,button{padding:12px 16px;border-radius:12px;border:none;font-size:1rem;}
+    input{width:140px;text-align:center;margin-right:10px;}
+    button{background:var(--accent);color:var(--bg);font-weight:700;cursor:pointer;min-width:120px;}
+    button:hover{filter:brightness(1.1);}
+    .card{background:rgba(17,26,46,0.85);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px);}
+    .error{color:#ef4444;margin-top:10px;display:none;}
   </style>
-
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, serverTimestamp, collection, query, orderBy, limit, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -48,113 +31,89 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db  = getFirestore(app);
 
-    const $ = (id)=>document.getElementById(id);
-    const showError = (msg)=>{ const b=$('error'); b.textContent=msg; b.style.display='block'; $('ok').style.display='none'; };
-    const showOk    = (msg)=>{ const b=$('ok');    b.textContent=msg; b.style.display='block'; $('error').style.display='none'; };
+    // Identifiant unique du téléphone
+    function getDeviceId(){
+      const key = 'sc_deviceId';
+      let id = localStorage.getItem(key);
+      if(!id){
+        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16));
+        localStorage.setItem(key,id);
+      }
+      return id;
+    }
+    const DEVICE_ID = getDeviceId();
 
-    window.addEventListener('DOMContentLoaded', () => {
-      const nb   = $('playersCount');
-      const list = $('playersNames');
-      const btn  = $('btnStart');
+    // Récupère le dernier code de soirée
+    async function getLastSoireeCode(){
+      const q = query(collection(db,'soirees'), orderBy('createdAt','desc'), limit(1));
+      const snap = await getDocs(q);
+      if(snap.empty) return '';
+      const docData = snap.docs[0].data();
+      return docData.code || '';
+    }
 
-      nb.addEventListener('change', () => {
-        const v = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
-        nb.value = String(isNaN(v)?4:v);
+    async function checkAutoRejoin(){
+      const code = (localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
+      if(!code) return;
+      const ref = doc(db,'soirees', code);
+      const snap = await getDoc(ref);
+      if(!snap.exists()) return;
+      const data = snap.data();
+      const status = String(data.status||'setup');
+      if(status === 'setup' || status === 'lobby'){
+        window.location.href = `confirmation_joueurs.html?code=${code}`;
+      } else if(status === 'playing'){
+        window.location.href = `table.html?code=${code}`;
+      } else if(status === 'ended'){
+        window.location.href = `selection_jeux.html?code=${code}`;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', async ()=>{
+      await signInAnonymously(auth).catch(()=>{});
+      const lastCode = await getLastSoireeCode();
+      if(lastCode) document.getElementById('codeInput').value = lastCode;
+      checkAutoRejoin();
+
+      document.getElementById('btnHost').addEventListener('click', async ()=>{
+        const code = String(Math.floor(1000 + Math.random()*9000));
+        await setDoc(doc(db,'soirees', code), {
+          code,
+          status:'setup',
+          createdAt: serverTimestamp(),
+          players: [],
+        });
+        localStorage.setItem('sc_code', code);
+        window.location.href = `attente_confirmation.html?code=${code}&host=1`;
       });
 
-      btn.disabled = false;
-      $('btnJoinAsPlayer').disabled = false;
-      $('btnJoinAsHost').disabled   = false;
-
-      btn.addEventListener('click', async () => {
-        const n = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
-        const names = (list.value||'')
-          .replace(/\r/g,'')
-          .split(/\n+/)
-          .map(s => s.trim())
-          .filter(Boolean);
-
-        if(names.length !== n){
-          showError(`Veuillez entrer exactement ${n} nom(s), une ligne par nom.`);
+      document.getElementById('btnJoin').addEventListener('click', ()=>{
+        const code = document.getElementById('codeInput').value.replace(/\D/g,'').slice(0,4);
+        if(code.length!==4){
+          const err = document.querySelector('.error');
+          err.style.display='block';
+          err.textContent='Entrez un code valide';
           return;
         }
-
-        const code = String(Math.floor(1000 + Math.random()*9000));
         localStorage.setItem('sc_code', code);
-        localStorage.setItem('sc_players', JSON.stringify(names));
-        localStorage.setItem('sc_count', String(n));
-
-        try{
-          await setDoc(doc(db, 'soirees', code), {
-            code,
-            playerCount: n,
-            players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })),
-            status: 'setup',
-            createdAt: serverTimestamp()
-          });
-          showOk(`Soirée #${code} créée. Ouverture de l'écran hôte…`);
-          window.location.href = `attente_confirmation.html?code=${code}&host=1`;
-        }catch(err){
-          showError(`Échec: ${err?.message||err}`);
-        }
-      });
-
-      const codeInput = $('resumeCode');
-      const btnPlayer = $('btnJoinAsPlayer');
-      const btnHost   = $('btnJoinAsHost');
-      const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
-
-      btnPlayer.addEventListener('click', ()=>{
-        const v = sanitizeCode(codeInput.value || localStorage.getItem('sc_code'));
-        if(v.length!==4){ showError('Entrez un code à 4 chiffres pour rejoindre.'); return; }
-        localStorage.setItem('sc_code', v);
-        window.location.href = `confirmation_joueurs.html?code=${v}`;
-      });
-
-      btnHost.addEventListener('click', ()=>{
-        const v = sanitizeCode(codeInput.value || localStorage.getItem('sc_code'));
-        if(v.length!==4){ showError('Entrez un code à 4 chiffres pour reprendre comme hôte.'); return; }
-        localStorage.setItem('sc_code', v);
-        window.location.href = `attente_confirmation.html?code=${v}&host=1`;
+        window.location.href = `confirmation_joueurs.html?code=${code}`;
       });
     });
   </script>
 </head>
 <body>
-  <main class="wrap">
-    <section class="card grid">
-      <h1>Soirée de carte</h1>
-      <p class="info">
-        Inscrire le nom des joueurs en commençant par le maître du jeu, puis dans le sens des aiguilles d’une montre.
-        L’ordre détermine l’ordre de jeu.
-      </p>
-
-      <label for="playersCount">Nombre de joueurs</label>
-      <input id="playersCount" type="number" min="2" max="8" value="4" inputmode="numeric" />
-
-      <label for="playersNames">Noms ou surnoms (une ligne par nom)</label>
-      <textarea id="playersNames" placeholder="Ex.&#10;Jean-François (hôte)&#10;Lise&#10;Marc&#10;Louise"></textarea>
-
-      <button class="btn" id="btnStart">Débuter la soirée</button>
-
-      <div id="error" class="err" role="alert"></div>
-      <div id="ok" class="ok" role="status"></div>
-    </section>
-
-    <section class="card grid">
-      <h2>Reprendre une soirée</h2>
-      <label for="resumeCode">Code de la soirée (4 chiffres)</label>
-      <input id="resumeCode" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Ex.: 1234" />
-      <div class="cols">
-        <button class="btn small" id="btnJoinAsPlayer">Rejoindre comme joueur</button>
-        <button class="btn small" id="btnJoinAsHost">Reprendre comme hôte</button>
-      </div>
-      <p class="info">Astuce : si le code est vide, on utilisera le dernier code mémorisé sur cet appareil.</p>
-    </section>
-
-    <div class="footer">v2.12 • Firestore-only (avec fond Jeep)</div>
+  <main class="card">
+    <h1>Soirée de cartes</h1>
+    <p>Rejoignez ou créez une nouvelle partie entre amis.</p>
+    <div style="margin-top:20px;display:flex;justify-content:center;align-items:center;">
+      <input id="codeInput" maxlength="4" placeholder="Code de la soirée" />
+      <button id="btnJoin">Rejoindre</button>
+    </div>
+    <button id="btnHost" style="margin-top:20px;">Créer une nouvelle soirée</button>
+    <div class="error"></div>
   </main>
 </body>
 </html>
