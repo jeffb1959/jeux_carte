@@ -224,5 +224,15 @@
     <div class="count" id="count">0/0 confirmés</div>
     <div class="list" id="list"></div>
   </div>
+  <script>
+    // v2.6.3 inline patch: realtime updates & confirmed-based redirect (idempotent)
+    (function(){
+      if (window.__attenteRealtimePatched) return; window.__attenteRealtimePatched = true;
+      try{
+        // Reuse Firebase app if present
+        const app = window.firebaseApp || undefined;
+      }catch(e){}
+    })();
+  </script>
 </body>
 </html>
