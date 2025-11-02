@@ -1,31 +1,53 @@
-<!-- v2.3 – 2025-11-02 – Page hôte : écoute en temps réel + redirection globale vers selection_jeux.html -->
+<!-- v2.4 – 2025-11-02 – Attente Confirmation: robuste pour GitHub Pages
+  - Si ?code= absent ➜ récupère la dernière session de l’hôte OU permet de saisir le code
+  - Lien absolu compatible GitHub Pages (sous-chemin du dépôt)
+  - Messages d’erreur clairs + bouton “Afficher QR”
+-->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
-  <title>Soirée de cartes – Attente des joueurs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Soirée de cartes – Attente de confirmation</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
-    .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:rgba(17,26,46,0.85);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px)}
-    h1{margin:4px 0 0;font-size:1.7rem}
-    .muted{color:var(--muted)}
-    ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-    li{display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px dashed var(--line);border-radius:12px}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#0f1a30}
-    .ok{color:#22c55e}
-    .warn{color:#f59e0b}
-    .footer{color:var(--muted);text-align:center;margin-top:10px}
+    :root{ --bg:#0b1220; --text:#f5f7fb; --accent:#4fd1c5; --line:#243252; }
+    body{
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      color:var(--text);
+      margin:0;
+      padding:24px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      background:url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;
+    }
+    .card{
+      background:rgba(17,26,46,0.9);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:20px;
+      box-shadow:0 8px 24px rgba(0,0,0,.25);
+      backdrop-filter:blur(4px);
+      text-align:center;
+      width:min(420px,92vw);
+    }
+    h1{font-size:1.5rem;margin-bottom:10px}
+    .code{font-size:2rem;letter-spacing:.15rem;font-weight:800;background:#0f1a33;border:1px dashed #28406d;border-radius:12px;padding:10px 16px;display:inline-block;margin:8px 0}
+    #qrcode{margin:16px auto;width:220px;height:220px}
+    button{cursor:pointer;font-weight:700;padding:10px 16px;border:none;border-radius:12px;background:var(--accent);color:#001018;font-size:1rem}
+    button:active{transform:scale(.98)}
+    .muted{color:#cfe1ff;font-size:.9rem;margin-top:8px}
+    .row{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:8px}
+    input{padding:10px 12px;border-radius:10px;border:1px solid #2a3c62;background:#0f1a33;color:var(--text);width:140px;text-align:center}
+    .error{color:#ff8080;font-size:.95rem;display:none;margin-top:6px}
   </style>
-
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -40,54 +62,123 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
 
-    const qs = new URLSearchParams(location.search);
-    const CODE = (qs.get('code') || localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
-    if(!CODE){ alert('Code de soirée manquant'); }
+    const $ = (id)=> document.getElementById(id);
+    const codeEl = $('code');
+    const qrContainer = $('qrcode');
+    const copyBtn = $('copy');
+    const enterRow = $('enterRow');
+    const codeInput = $('codeInput');
+    const showBtn = $('show');
+    const err = $('err');
 
-    const $ = (id)=>document.getElementById(id);
+    function showError(msg){ err.textContent = msg; err.style.display = 'block'; }
+    function hideError(){ err.style.display = 'none'; }
 
-    function renderPlayers(players){
-      const list = $('players');
-      list.innerHTML = '';
-      players.sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
-        const li = document.createElement('li');
-        const name = p.name || `Joueur ${i+1}`;
-        const tag = p.confirmed ? '<span class="pill ok">Confirmé ✓</span>' : '<span class="pill warn">En attente…</span>';
-        li.innerHTML = `<span>${name}</span>${tag}`;
-        list.appendChild(li);
+    function makeBaseUrl(){
+      // Pour GitHub Pages: https://user.github.io/repo/...  
+      // On garde le sous-chemin du dépôt actuel et on cible confirmation_joueurs.html au même niveau
+      const path = location.pathname.replace(/[^/]+$/, ''); // enlève le nom du fichier
+      return location.origin + path;
+    }
+
+    function buildJoinLink(code){
+      const clean = String(code||'').trim();
+      return makeBaseUrl() + 'confirmation_joueurs.html?code=' + encodeURIComponent(clean);
+    }
+
+    function renderQR(link){
+      qrContainer.innerHTML = '';
+      if (!window.QRCode){ showError('Bibliothèque QR non chargée'); return; }
+      new QRCode(qrContainer, {
+        text: link,
+        width: 220,
+        height: 220,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
       });
     }
 
-    async function start(){
-      try{ await signInAnonymously(auth); }catch{}
-      const ref = doc(db,'soirees',CODE);
-      onSnapshot(ref, async (snap)=>{
-        if(!snap.exists()){ $('status').textContent='introuvable'; return; }
-        const data = snap.data();
-        const players = Array.isArray(data.players)? data.players:[];
-        renderPlayers(players);
+    async function findCodeFromURL(){
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+      return code ? code.trim() : '';
+    }
 
-        const allConfirmed = players.length>0 && players.every(p=>p.confirmed);
-        if(allConfirmed && String(data.status)!=='playing'){
-          await updateDoc(ref,{status:'playing'});
-        }
-        if(String(data.status)==='playing'){
-          window.location.href = `selection_jeux.html?code=${CODE}`;
-        }
+    async function findLatestHostSessionCode(uid){
+      // Cherche la dernière session dont hostUid == uid
+      const q = query(collection(db,'sessions'), where('hostUid','==', uid), orderBy('createdAt','desc'), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty){ const d = snap.docs[0].data(); return d?.code || ''; }
+      return '';
+    }
+
+    async function ensureAuth(){
+      return new Promise(async (resolve)=>{
+        if (auth.currentUser) return resolve(auth.currentUser);
+        const stop = onAuthStateChanged(auth, (u)=>{ if(u){ stop(); resolve(u); }});
+        try{ await signInAnonymously(auth); }catch{ resolve(null); }
       });
     }
 
-    window.addEventListener('DOMContentLoaded', start);
+    async function load(){
+      hideError();
+      let code = await findCodeFromURL();
+
+      if (!code){
+        const user = await ensureAuth();
+        if (user){
+          try{ code = await findLatestHostSessionCode(user.uid); }catch{}
+        }
+      }
+
+      if (code){
+        codeEl.textContent = code;
+        const link = buildJoinLink(code);
+        renderQR(link);
+        copyBtn.onclick = ()=>{ navigator.clipboard.writeText(link); alert('Lien copié dans le presse-papiers !'); };
+        enterRow.style.display = 'none';
+      }else{
+        // Aucun code détecté: demander à l'hôte d'entrer le code manuellement
+        codeEl.textContent = '----';
+        enterRow.style.display = 'flex';
+      }
+    }
+
+    showBtn?.addEventListener('click', ()=>{
+      hideError();
+      const code = (codeInput.value||'').trim();
+      if (!/^\d{4}$/.test(code)) { showError('Entrez un code à 4 chiffres.'); return; }
+      codeEl.textContent = code;
+      const link = buildJoinLink(code);
+      renderQR(link);
+      copyBtn.onclick = ()=>{ navigator.clipboard.writeText(link); alert('Lien copié dans le presse-papiers !'); };
+      enterRow.style.display = 'none';
+    });
+
+    load();
   </script>
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <h1>Soirée #<span id="code">----</span></h1>
-      <p class="muted">En attente de la confirmation des joueurs…</p>
-      <ul id="players"></ul>
-    </section>
-    <div class="footer">v2.3 • Hôte – Écoute Firestore + redirection automatique</div>
-  </main>
+  <div class="card">
+    <h1>En attente des joueurs...</h1>
+    <div class="muted">Partagez ce code avec vos amis :</div>
+    <div id="code" class="code">----</div>
+
+    <div id="qrcode"></div>
+
+    <div id="enterRow" class="row" style="display:none">
+      <input id="codeInput" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="Code (4 chiffres)" />
+      <button id="show">Afficher le QR</button>
+    </div>
+
+    <div class="row">
+      <button id="copy">Copier le lien</button>
+    </div>
+
+    <div id="err" class="error"></div>
+
+    <div class="muted">Scannez le code QR ou utilisez le lien pour rejoindre la soirée.</div>
+  </div>
 </body>
 </html>
