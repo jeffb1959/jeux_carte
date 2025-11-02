@@ -1,4 +1,4 @@
-<!-- v2.13 – 2025-11-01 – Firestore only + liaison appareil → joueur (deviceId) -->
+<!-- v2.15 – 2025-11-02 – Auth anonyme + enregistrement uid joueur + auto 'playing' + redirection globale -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -27,6 +27,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -39,6 +40,7 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db  = getFirestore(app);
 
     const qs   = new URLSearchParams(location.search);
@@ -48,44 +50,43 @@
     const $  = (id)=>document.getElementById(id);
     const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-    // --- Liaison appareil (deviceId persistant par navigateur) ---
     function getDeviceId(){
       const key = 'sc_deviceId';
       let id = localStorage.getItem(key);
       if(!id){
-        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
-          (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16)
-        );
+        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16));
         localStorage.setItem(key,id);
       }
       return id;
     }
     const DEVICE_ID = getDeviceId();
 
+    function allConfirmed(data){
+      const players = Array.isArray(data.players)? data.players: [];
+      const expected = Number(data.playerCount||players.length)||players.length;
+      if(players.length < expected) return false;
+      return expected>0 && players.filter(p=>p && p.confirmed===true).length === expected;
+    }
+
     function render(players){
       const list = $('players');
       list.innerHTML = '';
-
       const myIdx = players.findIndex(p=> p && p.deviceId === DEVICE_ID);
-
       players.slice().sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
         const li = document.createElement('li');
         const name = esc(p.name || `Joueur ${i+1}`);
         const isMine  = p.deviceId === DEVICE_ID;
         const claimed = !!p.deviceId;
-
         const right = p.confirmed
           ? `<span class="pill ok">Confirmé ✓${isMine?' (mon appareil)':''}</span>`
           : (isMine
-              ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
+              ? `<button class=\"btn small\" data-idx=\"${i}\" data-act=\"confirm\">C’est moi</button>`
               : (!claimed && (myIdx === -1)
-                  ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
-                  : `<span class="pill">Réservé</span>`));
-
+                  ? `<button class=\"btn small\" data-idx=\"${i}\" data-act=\"confirm\">C’est moi</button>`
+                  : `<span class=\"pill\">Réservé</span>`));
         li.innerHTML = `<span>${name}</span><span>${right}</span>`;
         list.appendChild(li);
       });
-
       list.querySelectorAll('button[data-act="confirm"]').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const idx = Number(btn.getAttribute('data-idx'));
@@ -101,37 +102,38 @@
       const data = snap.data();
       const players = Array.isArray(data.players)? data.players.slice():[];
 
-      // 1) L'appareil a-t-il déjà un joueur associé ?
       const myIdx = players.findIndex(p => p && p.deviceId === DEVICE_ID);
-      if(myIdx !== -1 && myIdx !== idx){
-        $('error').style.display='block';
-        $('error').textContent = 'Cet appareil est déjà associé à un autre joueur pour cette soirée.';
-        return;
-      }
+      if(myIdx !== -1 && myIdx !== idx){ $('error').style.display='block'; $('error').textContent = 'Cet appareil est déjà associé à un autre joueur.'; return; }
+      if(players[idx]?.deviceId && players[idx].deviceId !== DEVICE_ID){ $('error').style.display='block'; $('error').textContent = 'Ce nom est déjà confirmé ailleurs.'; return; }
 
-      // 2) Le joueur choisi est-il déjà associé à un autre appareil ?
-      if(players[idx]?.deviceId && players[idx].deviceId !== DEVICE_ID){
-        $('error').style.display='block';
-        $('error').textContent = 'Ce nom est déjà confirmé sur un autre appareil.';
-        return;
-      }
+      // Auth anonyme pour obtenir un uid et l’enregistrer sur le joueur
+      try{ await signInAnonymously(auth); }catch{}
+      const uid = auth.currentUser?.uid || null;
 
-      // 3) Lier l'appareil et confirmer
-      players[idx] = { ...players[idx], deviceId: DEVICE_ID, confirmed: true };
+      players[idx] = { ...players[idx], deviceId: DEVICE_ID, uid, confirmed: true };
       await updateDoc(ref, { players });
       $('error').style.display='none';
+
+      const afterSnap = await getDoc(ref);
+      const afterData = afterSnap.data();
+      if(allConfirmed(afterData) && String(afterData.status) !== 'playing'){
+        await updateDoc(ref, { status: 'playing' });
+      }
     }
 
-    // Watch realtime
     let unwatch = null;
-    function start(){
+    async function start(){
       $('code').textContent = CODE;
-
+      try{ await signInAnonymously(auth); }catch{}
       if(unwatch) unwatch();
       const ref = doc(db,'soirees', CODE);
       unwatch = onSnapshot(ref, (snap)=>{
         if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
         const data = snap.data();
+        if(String(data.status)==='playing'){
+          window.location.href = `selection_jeux.html?code=${CODE}`;
+          return;
+        }
         const players = Array.isArray(data.players)? data.players : [];
         render(players);
       }, (err)=>{
@@ -147,12 +149,10 @@
     <section class="card">
       <h1>Confirmer ma présence – Code <span class="pill" id="code">----</span></h1>
       <p class="muted">Clique sur ton nom pour te confirmer. Un appareil ne peut confirmer <b>qu’un</b> joueur.</p>
-
       <ul id="players"></ul>
-
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer" style="text-align:center;color:var(--muted)">v2.13 • Firestore-only • Liaison appareil activée</div>
+    <div class="footer" style="text-align:center;color:var(--muted)">v2.15 • Auth anonyme + uid joueur • Auto 'playing' + redirection globale</div>
   </main>
 </body>
 </html>
