@@ -1,4 +1,8 @@
-<!-- v1.5 – 2025-11-02 – Ajout d'une image d'arrière-plan (fond Jeep) -->
+<!-- v1.6 – 2025-11-02 – Hôte auto-confirmé
+- Le joueur de siège 0 (hôte) est automatiquement lié à l’appareil et à l’utilisateur qui démarre la soirée
+- Ajout deviceId + uid + confirmed + confirmedAt sur seatIndex=0
+- Reste identique : fond Jeep, validation du nombre, redirection
+-->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -70,6 +74,13 @@
     const okEl = $('ok');
     const listEl = $('list');
 
+    function getDeviceId(){
+      const k='sc_deviceId';
+      let id = localStorage.getItem(k);
+      if(!id){ id = crypto.randomUUID(); localStorage.setItem(k,id); }
+      return id;
+    }
+
     let code = new URL(location.href).searchParams.get('code') || '';
 
     function showError(msg){ errorEl.textContent = msg; errorEl.style.display = 'block'; okEl.style.display='none'; }
@@ -139,13 +150,18 @@
       await setDoc(doc(db,'sessions', code), { expectedPlayers: expected }, { merge:true });
       await clearPlayers();
 
+      // Auto-confirmation de l'hôte (seatIndex=0)
+      const DEVICE_ID = getDeviceId();
+      const user = auth.currentUser || await new Promise(resolve=>{ const stop=onAuthStateChanged(auth,u=>{ if(u){ stop(); resolve(u);} }); signInAnonymously(auth).catch(()=>resolve(null)); });
+      const uid = user?.uid || null;
+
       for (let seat=0; seat<names.length; seat++){
         const name = names[seat];
-        await addDoc(collection(db,'sessions', code, 'players'), {
-          name,
-          seatIndex: seat,
-          at: serverTimestamp()
-        });
+        const base = { name, seatIndex: seat, at: serverTimestamp() };
+        const data = (seat === 0)
+          ? { ...base, deviceId: DEVICE_ID, uid, confirmed: true, confirmedAt: serverTimestamp() }
+          : base;
+        await addDoc(collection(db,'sessions', code, 'players'), data);
         if (seat === 0){ await setDoc(doc(db,'sessions', code), { hostName: name }, { merge:true }); }
       }
       showOk('Liste enregistrée.');
