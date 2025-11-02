@@ -1,4 +1,7 @@
-<!-- v2.15 – 2025-11-02 – Auth anonyme + enregistrement uid joueur + auto 'playing' + redirection globale -->
+<!-- v2.16 – 2025-11-02 – Correction "Soirée introuvable"
+CAUSE: v2.15 lisait la collection `soirees` + un tableau `players`.
+FIX: utilisation de `sessions/{code}` + sous-collection `players` (ordre par seatIndex), auth anonyme avant lecture.
+-->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -27,8 +30,8 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -40,108 +43,90 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db  = getFirestore(app);
-
-    const qs   = new URLSearchParams(location.search);
-    const CODE = (qs.get('code') || localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
-    if(!CODE){ alert('Code de soirée manquant'); }
+    const auth = getAuth(app);
 
     const $  = (id)=>document.getElementById(id);
-    const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const CODE = (new URLSearchParams(location.search).get('code')||'').replace(/\D/g,'').slice(0,4);
 
-    function getDeviceId(){
-      const key = 'sc_deviceId';
-      let id = localStorage.getItem(key);
-      if(!id){
-        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16));
-        localStorage.setItem(key,id);
-      }
-      return id;
-    }
+    function showError(msg){ const e=$('error'); e.textContent=msg; e.style.display='block'; }
+    function clearError(){ const e=$('error'); e.style.display='none'; }
+
+    function esc(s){ return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function getDeviceId(){ const k='sc_deviceId'; let id=localStorage.getItem(k); if(!id){ id=crypto.randomUUID(); localStorage.setItem(k,id);} return id; }
     const DEVICE_ID = getDeviceId();
 
-    function allConfirmed(data){
-      const players = Array.isArray(data.players)? data.players: [];
-      const expected = Number(data.playerCount||players.length)||players.length;
-      if(players.length < expected) return false;
-      return expected>0 && players.filter(p=>p && p.confirmed===true).length === expected;
-    }
-
-    function render(players){
-      const list = $('players');
-      list.innerHTML = '';
-      const myIdx = players.findIndex(p=> p && p.deviceId === DEVICE_ID);
-      players.slice().sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
-        const li = document.createElement('li');
-        const name = esc(p.name || `Joueur ${i+1}`);
-        const isMine  = p.deviceId === DEVICE_ID;
-        const claimed = !!p.deviceId;
-        const right = p.confirmed
-          ? `<span class="pill ok">Confirmé ✓${isMine?' (mon appareil)':''}</span>`
-          : (isMine
-              ? `<button class=\"btn small\" data-idx=\"${i}\" data-act=\"confirm\">C’est moi</button>`
-              : (!claimed && (myIdx === -1)
-                  ? `<button class=\"btn small\" data-idx=\"${i}\" data-act=\"confirm\">C’est moi</button>`
-                  : `<span class=\"pill\">Réservé</span>`));
-        li.innerHTML = `<span>${name}</span><span>${right}</span>`;
-        list.appendChild(li);
-      });
-      list.querySelectorAll('button[data-act="confirm"]').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{
-          const idx = Number(btn.getAttribute('data-idx'));
-          await confirmIndex(idx);
-        });
+    async function ensureAuth(){
+      return new Promise(async (resolve)=>{
+        if (auth.currentUser) return resolve(auth.currentUser);
+        const stop = onAuthStateChanged(auth,(u)=>{ if(u){ stop(); resolve(u);} });
+        try{ await signInAnonymously(auth); }catch{ resolve(null); }
       });
     }
 
-    async function confirmIndex(idx){
-      const ref = doc(db,'soirees', CODE);
-      const snap = await getDoc(ref);
-      if(!snap.exists()) throw new Error('Soirée introuvable');
-      const data = snap.data();
-      const players = Array.isArray(data.players)? data.players.slice():[];
-
-      const myIdx = players.findIndex(p => p && p.deviceId === DEVICE_ID);
-      if(myIdx !== -1 && myIdx !== idx){ $('error').style.display='block'; $('error').textContent = 'Cet appareil est déjà associé à un autre joueur.'; return; }
-      if(players[idx]?.deviceId && players[idx].deviceId !== DEVICE_ID){ $('error').style.display='block'; $('error').textContent = 'Ce nom est déjà confirmé ailleurs.'; return; }
-
-      // Auth anonyme pour obtenir un uid et l’enregistrer sur le joueur
-      try{ await signInAnonymously(auth); }catch{}
-      const uid = auth.currentUser?.uid || null;
-
-      players[idx] = { ...players[idx], deviceId: DEVICE_ID, uid, confirmed: true };
-      await updateDoc(ref, { players });
-      $('error').style.display='none';
-
-      const afterSnap = await getDoc(ref);
-      const afterData = afterSnap.data();
-      if(allConfirmed(afterData) && String(afterData.status) !== 'playing'){
-        await updateDoc(ref, { status: 'playing' });
-      }
-    }
-
-    let unwatch = null;
-    async function start(){
+    async function init(){
+      if (!/^\d{4}$/.test(CODE)){ showError('Code manquant ou invalide.'); return; }
       $('code').textContent = CODE;
-      try{ await signInAnonymously(auth); }catch{}
-      if(unwatch) unwatch();
-      const ref = doc(db,'soirees', CODE);
-      unwatch = onSnapshot(ref, (snap)=>{
-        if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
-        const data = snap.data();
-        if(String(data.status)==='playing'){
-          window.location.href = `selection_jeux.html?code=${CODE}`;
+
+      await ensureAuth();
+
+      // 1) Vérifie l'existence de sessions/{code}
+      const sessionRef = doc(db,'sessions', CODE);
+      const sessionSnap = await getDoc(sessionRef);
+      if(!sessionSnap.exists()){
+        showError("Soirée introuvable. Demandez à l'hôte de finaliser l'inscription des joueurs.");
+        return;
+      }
+
+      // 2) Stream de la liste des joueurs: sessions/{code}/players (ordre horaire)
+      const playersQ = query(collection(db,'sessions', CODE, 'players'), orderBy('seatIndex','asc'));
+      onSnapshot(playersQ, (snap)=>{
+        const ul = $('players');
+        ul.innerHTML = '';
+        if (snap.empty){
+          const li = document.createElement('li');
+          li.textContent = "Aucun joueur saisi pour le moment...";
+          ul.appendChild(li);
           return;
         }
-        const players = Array.isArray(data.players)? data.players : [];
-        render(players);
-      }, (err)=>{
-        $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
-      });
+        const mine = { has:false, name:'' };
+        const items = [];
+        snap.forEach((d)=>{ const p={ id:d.id, ...d.data() }; items.push(p); if(p.deviceId===DEVICE_ID){ mine.has=true; mine.name=p.name; } });
+        items.forEach((p,i)=>{
+          const li = document.createElement('li');
+          const left = document.createElement('span');
+          left.innerHTML = `<strong>${esc(p.name||`Joueur ${i+1}`)}</strong> <span class="muted">(siège ${p.seatIndex})</span>`;
+          const btn = document.createElement('button');
+          const locked = p.deviceId && p.deviceId !== DEVICE_ID;
+          const alreadyMine = p.deviceId === DEVICE_ID;
+          btn.textContent = alreadyMine ? 'Appareil lié' : (locked ? 'Déjà pris' : "C'est moi");
+          btn.disabled = locked || alreadyMine || (mine.has && !alreadyMine);
+          btn.className = 'btn small';
+          btn.onclick = ()=> claimPlayer(p);
+          li.appendChild(left);
+          li.appendChild(btn);
+          ul.appendChild(li);
+        });
+        clearError();
+      }, (err)=> showError('Erreur de lecture: '+(err?.message||err)) );
     }
 
-    window.addEventListener('DOMContentLoaded', start);
+    async function claimPlayer(player){
+      try{
+        await ensureAuth();
+        // Empêche qu'un même appareil prenne 2 joueurs (validation côté client sur l'état courant)
+        const ul = $('players');
+        const already = Array.from(ul.querySelectorAll('button')).some(b=> b.textContent==='Appareil lié');
+        if (already) { showError('Votre appareil est déjà lié à un joueur.'); return; }
+
+        const ref = doc(db,'sessions', CODE, 'players', player.id);
+        await updateDoc(ref, { deviceId: DEVICE_ID, uid: auth.currentUser?.uid || null, confirmed: true, confirmedAt: serverTimestamp() });
+        await setDoc(doc(db,'roles', auth.currentUser.uid), { role:'player', sessionCode: CODE }, { merge:true });
+        clearError();
+      }catch(e){ showError('Impossible de confirmer : '+(e?.message||e)); }
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </head>
 <body>
@@ -152,7 +137,7 @@
       <ul id="players"></ul>
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer" style="text-align:center;color:var(--muted)">v2.15 • Auth anonyme + uid joueur • Auto 'playing' + redirection globale</div>
+    <div class="footer" style="text-align:center;color:var(--muted)">v2.16 • sessions/{code}/players • auth d’abord • correctif "Soirée introuvable"</div>
   </main>
 </body>
 </html>
