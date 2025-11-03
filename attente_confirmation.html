@@ -1,171 +1,104 @@
-<!-- v3.1 – 2025-11-02 – Restaure la mise en page, affiche la liste des joueurs + statut, QR vers jads.ca, live Firestore, auto-lancement quand tous confirmés -->
+<!-- v3.1 – Attente Confirmation – fond sombre et texte blanc -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Soirée de cartes – Attente des confirmations</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Attente des joueurs – Soirée de carte</title>
   <style>
-    :root{ --bg:#0b1220; --text:#f5f7fb; --muted:#9fb1d1; --line:#243252; --ok:#22c55e; --wait:#fbbf24; --accent:#60a5fa; }
+    :root{ --bg:#0b1220; --text:#ffffff; --accent:#4fd1c5; }
     *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
-    .wrap{min-height:100vh;display:grid;place-items:center;padding:18px}
-    .card{width:min(760px,94vw);background:rgba(17,26,46,.86);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 28px rgba(0,0,0,.35);backdrop-filter:blur(4px);padding:18px}
-    h1{margin:.2rem 0 .4rem;font-size:1.9rem}
-    .muted{color:var(--muted)}
-    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-    .code{border:1px dashed var(--line);padding:8px 12px;border-radius:12px;font-weight:700;letter-spacing:.08rem}
-    .grid{display:grid;grid-template-columns: 1fr 220px; gap:14px; align-items:start}
-    .panel{background:rgba(3,9,20,.35);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px}
-    #qrcode{display:grid;place-items:center}
-    .btn{appearance:none;border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:#031023}
-    .btn.ghost{background:transparent;color:var(--text);border:1px solid rgba(255,255,255,.25)}
-    ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-    li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px dashed var(--line);border-radius:12px;background:rgba(4,14,30,.45)}
-    .pill{border:1px solid rgba(255,255,255,.2);padding:4px 10px;border-radius:999px}
-    .ok{color:var(--ok);border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.08)}
-    .wait{color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
-    .stats{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .err{margin-top:8px;background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    html,body{height:100%;}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text);font-size:1.05rem;}
+    .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
+    .card{background:rgba(0,0,0,0.35);border:1px solid #3a4a6a;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+    h1{margin:4px 0 0;font-size:1.8rem;color:#ffffff}
+    ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+    li{background:rgba(0,0,0,0.35);border:1px solid #3a4a6a;padding:10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;color:#ffffff}
+    .pill{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,0.1);color:#fff;font-size:0.9rem}
+    .ok{color:#22c55e}
+    .wait{color:#facc15}
+    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    canvas{display:block;margin:0 auto;background:#fff;border-radius:12px}
+    .footer{color:#ffffff;text-align:center;font-size:.95rem;margin-top:8px}
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, onSnapshot, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
-    // --- Config Firebase (même projet que les autres pages)
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+
     const firebaseConfig = {
-      apiKey: 'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg',
-      authDomain: 'soireecartev2.firebaseapp.com',
-      projectId: 'soireecartev2',
-      storageBucket: 'soireecartev2.firebasestorage.app',
-      messagingSenderId: '784781686361',
-      appId: '1:784781686361:web:033693cb22fb1a55af2348'
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
     };
 
     const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
     const auth = getAuth(app);
-    const db   = getFirestore(app);
 
-    // --- Util
-    const $ = (id)=>document.getElementById(id);
-    const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-    // --- Lecture du code depuis l'URL
     const qs = new URLSearchParams(location.search);
-    const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
+    const CODE = qs.get('code');
 
-    function expectedCount(data){
-      const players = Array.isArray(data.players) ? data.players : [];
-      return Number(data.playerCount||players.length)||players.length;
-    }
+    const $ = id => document.getElementById(id);
 
-    function confirmedCount(data){
-      const players = Array.isArray(data.players) ? data.players : [];
-      return players.filter(p=>p && p.confirmed===true).length;
-    }
-
-    function renderList(data){
-      const players = Array.isArray(data.players) ? data.players.slice() : [];
-      const ul = $('playerList');
-      ul.innerHTML = '';
-      players.sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
-        const li = document.createElement('li');
-        li.innerHTML = `<span>${esc(p?.name||`Joueur ${i+1}`)}</span>` +
-                       `<span class="pill ${p?.confirmed? 'ok':'wait'}">${p?.confirmed? 'Confirmé ✓':'En attente…'}</span>`;
-        ul.appendChild(li);
-      });
-
-      const exp = expectedCount(data);
-      const conf = confirmedCount(data);
-      $('stats').textContent = `${conf}/${exp} confirmé(s)`;
-    }
-
-    async function ensureAuth(){
+    async function start(){
+      $('code').textContent = CODE || '----';
       try{ await signInAnonymously(auth); }catch{}
-    }
 
-    function setupQR(){
-      $('sessionCode').textContent = CODE || '----';
-      const link = `https://jads.ca/confirmation_joueurs.html?code=${encodeURIComponent(CODE)}`;
-      $('joinLink').value = link;
-      new QRCode($('qrcode'), { text: link, width: 210, height: 210 });
-    }
-
-    async function maybeStartGame(data){
-      const exp = expectedCount(data);
-      const conf = confirmedCount(data);
-      if (exp>0 && conf === exp){
-        // Marque la session en cours si nécessaire, puis redirige l'hôte
-        if (String(data.status) !== 'playing'){
-          try{ await updateDoc(doc(db,'soirees', CODE), { status: 'playing' }); }catch{}
-        }
-        setTimeout(()=>{ location.href = `Selection_Jeux.html?code=${CODE}`; }, 800);
-      }
-    }
-
-    let unwatch = null;
-    async function init(){
-      if(!CODE){ $('error').style.display='block'; $('error').textContent = 'Code de soirée manquant dans l\'URL.'; return; }
-      setupQR();
-      await ensureAuth();
-
-      const ref = doc(db,'soirees', CODE);
-      const first = await getDoc(ref);
-      if(!first.exists()){ $('error').style.display='block'; $('error').textContent = 'Soirée introuvable.'; return; }
-      renderList(first.data());
-
-      unwatch = onSnapshot(ref, (snap)=>{
-        if(!snap.exists()){ $('error').style.display='block'; $('error').textContent = 'Soirée introuvable.'; return; }
-        const data = snap.data();
-        renderList(data);
-        if (String(data.status)==='playing'){
-          // Si déjà en jeu, bascule immédiatement
-          location.href = `Selection_Jeux.html?code=${CODE}`;
+      const ref = doc(db,'soirees',CODE);
+      onSnapshot(ref,(snap)=>{
+        if(!snap.exists()){
+          $('error').style.display='block';
+          $('error').textContent='Soirée introuvable.';
           return;
         }
-        maybeStartGame(data);
-      }, (err)=>{
-        $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
+        const data = snap.data();
+        renderPlayers(data.players||[]);
+
+        const confirmedCount = (data.players||[]).filter(p => p.confirmed).length;
+        const expected = Number(data.playerCount||0);
+        if(confirmedCount >= expected && data.status === 'setup'){
+          window.location.href = `Selection_Jeux.html?code=${CODE}`;
+        }
+      });
+
+      // QR code
+      const qrCanvas = document.getElementById('qr');
+      const size = 200;
+      qrCanvas.width = size;
+      qrCanvas.height = size;
+      import('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js').then(QR=>{
+        QR.default.toCanvas(qrCanvas, `https://jads.ca/confirmation_joueurs.html?code=${CODE}`, {width:size,color:{dark:'#000',light:'#fff'}});
       });
     }
 
-    window.addEventListener('DOMContentLoaded', init);
+    function renderPlayers(players){
+      const list = $('players');
+      list.innerHTML = '';
+      players.forEach(p => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${p.name||'---'}</span><span class="pill ${p.confirmed?'ok':'wait'}">${p.confirmed?'Confirmé':'En attente'}</span>`;
+        list.appendChild(li);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', start);
   </script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="top">
-        <h1>Attente des confirmations</h1>
-        <div class="code">Code: <span id="sessionCode">----</span></div>
-      </div>
-
-      <p class="muted">Demandez aux joueurs de scanner le code QR ou d'ouvrir le lien pour se confirmer.</p>
-
-      <div class="grid">
-        <div class="panel">
-          <h3 style="margin:.2rem 0 .6rem">Joueurs</h3>
-          <div class="stats"><span id="stats">0/0 confirmé(s)</span></div>
-          <ul id="playerList"></ul>
-          <div id="error" class="err" role="alert"></div>
-        </div>
-        <div class="panel" id="qrcodePanel">
-          <div id="qrcode" style="width:210px;height:210px;margin:auto"></div>
-          <div style="margin-top:10px">
-            <input id="joinLink" type="text" readonly style="width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:var(--text)" />
-            <div style="margin-top:8px;display:flex;gap:8px;justify-content:center">
-              <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('joinLink').value)">Copier le lien</button>
-              <button class="btn ghost" onclick="location.reload()">Rafraîchir</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <p class="muted" style="margin-top:12px">La partie démarre automatiquement quand tous les joueurs sont confirmés.</p>
-    </div>
-  </div>
+  <main class="wrap">
+    <section class="card">
+      <h1>Attente des joueurs – Code <span class="pill" id="code">----</span></h1>
+      <canvas id="qr"></canvas>
+      <ul id="players"></ul>
+      <div id="error" class="err"></div>
+    </section>
+    <div class="footer">v3.1 • Fond sombre 35% • Texte blanc pur • Style harmonisé</div>
+  </main>
 </body>
 </html>
