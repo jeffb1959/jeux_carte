@@ -1,13 +1,11 @@
 <!--
   Soirée de carte – INDEX
-  Version: v3.1 (2025-11-02)
+  Version: v3.3 (2025-11-02)
   Auteur: Jean-François + ChatGPT
   Points clés:
-    - Connexion Firebase en prod (domaines autorisés)
-    - Fallback SANDBOX (localStorage) si domaine non autorisé
-    - UI simple: nb joueurs, noms (1 par ligne), créer & reprendre
-    - Redirection corrigée: attente_confirmation.html
-    - Nouvel ajout: préremplir automatiquement le dernier code de soirée dans "Reprendre" (Firestore → soirees, tri par createdAt desc)
+    - Fond d’écran Jeep conservé
+    - Cartes fond sombre (opacité 35%)
+    - Texte des cartes en blanc pur, taille de police augmentée
 -->
 
 <!DOCTYPE html>
@@ -17,17 +15,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
   <title>Soirée de carte – Accueil</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#ffffff; --muted:#dfe3ec; --accent:#4fd1c5; --danger:#ef4444; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text);font-size:1.05rem}
     .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:transparent;border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    h1{margin:4px 0 0;font-size:1.8rem}
-    h2{margin:0 0 6px;font-size:1.2rem;color:var(--muted)}
-    .info{color:var(--muted);font-size:1rem;line-height:1.35}
-    label{color:var(--muted);font-size:1.05rem}
-    input[type="number"],textarea,input[type="tel"]{width:100%;font-size:1.15rem;padding:14px 16px;border-radius:14px;border:2px solid transparent;background:#0f1a30;color:var(--text);outline:none}
+    .card{background:rgba(0,0,0,0.35);border:1px solid #3a4a6a;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);color:#ffffff;font-size:1.1rem}
+    h1{margin:4px 0 0;font-size:2rem;color:#ffffff}
+    h2{margin:0 0 6px;font-size:1.3rem;color:#ffffff}
+    .info{color:#ffffff;font-size:1.05rem;line-height:1.4}
+    label{color:#ffffff;font-size:1.05rem}
+    input[type="number"],textarea,input[type="tel"]{width:100%;font-size:1.15rem;padding:14px 16px;border-radius:14px;border:2px solid transparent;background:#0f1a30;color:#ffffff;outline:none}
     input:focus,textarea:focus{border-color:var(--accent)}
     textarea{min-height:140px;resize:vertical}
     .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:54px;padding:14px;border-radius:14px;font-size:1.15rem;font-weight:800;color:#0c111b;background:var(--accent)}
@@ -37,11 +35,10 @@
     @media(min-width:640px){.cols{grid-template-columns:1fr 1fr}}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .ok{background:#0e2b1b;border:1px solid #1f6b3a;padding:10px;border-radius:12px;color:#d6ffe8;display:none}
-    .footer{color:#9fb1d1;text-align:center;font-size:.92rem}
+    .footer{color:#ffffff;text-align:center;font-size:.95rem;margin-top:8px}
   </style>
 
   <script type="module">
-    // --------- Détection environnement ----------
     const HOST = location.hostname;
     const FIREBASE_ALLOWED = (
       HOST === 'localhost' ||
@@ -51,18 +48,15 @@
       HOST === 'jeffb1959.github.io'
     );
 
-    // --------- Helpers UI ----------
     const $ = (id)=>document.getElementById(id);
     const showError = (msg)=>{ const b=$('error'); b.textContent=msg; b.style.display='block'; $('ok').style.display='none'; };
     const showOk    = (msg)=>{ const b=$('ok');    b.textContent=msg; b.style.display='block'; $('error').style.display='none'; };
 
-    // --------- SANDBOX store ----------
     const LS_KEY = 'sc_sandbox_soirees';
     const storeRead  = ()=>{ try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}} };
     const storeWrite = (obj)=>{ try{localStorage.setItem(LS_KEY, JSON.stringify(obj))}catch{} };
 
-    // --------- API (prod Firebase ou SANDBOX local) ----------
-    let api = null; // { initAuth(), create(), getLatestCode() }
+    let api = null;
 
     if (FIREBASE_ALLOWED) {
       (async () => {
@@ -103,7 +97,7 @@
               await setDoc(doc(db, 'soirees', code), {
                 code,
                 playerCount: n,
-                players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })), // hôte confirmé
+                players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })),
                 status: 'setup',
                 createdAt: serverTimestamp()
               });
@@ -117,15 +111,13 @@
                   const data = d.data()||{};
                   return String(data.code || d.id || '').replace(/\D/g,'').slice(0,4);
                 }
-              }catch(e){ /* silencieux: pas bloquant */ }
+              }catch(e){ }
               return '';
             }
           };
 
           await api.initAuth();
-        }catch(e){
-          setupSandbox();
-        }
+        }catch(e){ setupSandbox(); }
       })();
     } else {
       setupSandbox();
@@ -156,7 +148,6 @@
       api.initAuth();
     }
 
-    // --------- Main UI ----------
     window.addEventListener('DOMContentLoaded', () => {
       const nb   = $('playersCount');
       const list = $('playersNames');
@@ -168,10 +159,8 @@
         nb.value = String(isNaN(v)?4:v);
       });
 
-      // Pré-remplir automatiquement le dernier code de soirée
       (async function prefill(){
         try{
-          // attend que l'API soit prête
           for(let i=0;i<20;i++){
             if(api && typeof api.getLatestCode === 'function') break;
             await new Promise(r=>setTimeout(r,75));
@@ -251,7 +240,7 @@
       <p class="info">Le dernier code s’affiche automatiquement lorsqu’il est disponible.</p>
     </section>
 
-    <div class="footer">v3.1 • Firebase (prod) + SANDBOX • Hôte auto-confirmé • Pré-remplissage du dernier code</div>
+    <div class="footer">v3.3 • Esthétique mise à jour (fond sombre + texte blanc pur)</div>
   </main>
 </body>
 </html>
