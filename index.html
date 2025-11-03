@@ -1,12 +1,13 @@
 <!--
   Soirée de carte – INDEX
-  Version: v2.5 (2025-10-31)
+  Version: v3.1 (2025-11-02)
   Auteur: Jean-François + ChatGPT
   Points clés:
     - Connexion Firebase en prod (domaines autorisés)
     - Fallback SANDBOX (localStorage) si domaine non autorisé
     - UI simple: nb joueurs, noms (1 par ligne), créer & reprendre
     - Redirection corrigée: attente_confirmation.html
+    - Nouvel ajout: préremplir automatiquement le dernier code de soirée dans "Reprendre" (Firestore → soirees, tri par createdAt desc)
 -->
 
 <!DOCTYPE html>
@@ -15,14 +16,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
   <title>Soirée de carte – Accueil</title>
-
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
     .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .card{background:transparent;border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
     h1{margin:4px 0 0;font-size:1.8rem}
     h2{margin:0 0 6px;font-size:1.2rem;color:var(--muted)}
     .info{color:var(--muted);font-size:1rem;line-height:1.35}
@@ -37,7 +37,7 @@
     @media(min-width:640px){.cols{grid-template-columns:1fr 1fr}}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .ok{background:#0e2b1b;border:1px solid #1f6b3a;padding:10px;border-radius:12px;color:#d6ffe8;display:none}
-    .footer{color:var(--muted);text-align:center;font-size:.92rem}
+    .footer{color:#9fb1d1;text-align:center;font-size:.92rem}
   </style>
 
   <script type="module">
@@ -62,16 +62,19 @@
     const storeWrite = (obj)=>{ try{localStorage.setItem(LS_KEY, JSON.stringify(obj))}catch{} };
 
     // --------- API (prod Firebase ou SANDBOX local) ----------
-    let api = null; // { initAuth(), create(code, names, n) }
+    let api = null; // { initAuth(), create(), getLatestCode() }
 
     if (FIREBASE_ALLOWED) {
       (async () => {
         try{
-          const [{ initializeApp }, { getAuth, signInAnonymously, onAuthStateChanged }, { getFirestore, doc, setDoc, serverTimestamp }] = await Promise.all([
+          const [appMod, authMod, fsMod] = await Promise.all([
             import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js'),
             import('https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js'),
             import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js'),
           ]);
+          const { initializeApp } = appMod;
+          const { getAuth, signInAnonymously, onAuthStateChanged } = authMod;
+          const { getFirestore, doc, setDoc, serverTimestamp, collection, query, orderBy, limit, getDocs } = fsMod;
 
           const firebaseConfig = {
             apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -91,7 +94,6 @@
               try{ await signInAnonymously(auth); }catch(e){ showError(`Auth anonyme impossible: ${e?.message||e}`); }
               onAuthStateChanged(auth, (user)=>{
                 if(!user) return;
-                // Active les boutons à la connexion
                 $('btnStart').disabled = false;
                 $('btnJoinAsPlayer').disabled = false;
                 $('btnJoinAsHost').disabled   = false;
@@ -101,16 +103,27 @@
               await setDoc(doc(db, 'soirees', code), {
                 code,
                 playerCount: n,
-                players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })), // hôte = index 0 confirmé
+                players: names.map((name, idx)=>({ name, order: idx, confirmed: idx === 0 })), // hôte confirmé
                 status: 'setup',
                 createdAt: serverTimestamp()
               });
+            },
+            async getLatestCode(){
+              try{
+                const q = query(collection(db,'soirees'), orderBy('createdAt','desc'), limit(1));
+                const snap = await getDocs(q);
+                if(!snap.empty){
+                  const d = snap.docs[0];
+                  const data = d.data()||{};
+                  return String(data.code || d.id || '').replace(/\D/g,'').slice(0,4);
+                }
+              }catch(e){ /* silencieux: pas bloquant */ }
+              return '';
             }
           };
 
           await api.initAuth();
         }catch(e){
-          // Si Firebase n'est pas dispo (CSP, domaine non autorisé), bascule SANDBOX
           setupSandbox();
         }
       })();
@@ -121,7 +134,6 @@
     function setupSandbox(){
       api = {
         async initAuth(){
-          // Pas d’auth réseau: on active l’UI directement
           $('btnStart').disabled = false;
           $('btnJoinAsPlayer').disabled = false;
           $('btnJoinAsHost').disabled   = false;
@@ -136,6 +148,9 @@
             createdAt: Date.now()
           };
           storeWrite(store);
+        },
+        async getLatestCode(){
+          return (localStorage.getItem('sc_code')||'').replace(/\D/g,'').slice(0,4);
         }
       };
       api.initAuth();
@@ -146,12 +161,27 @@
       const nb   = $('playersCount');
       const list = $('playersNames');
       const btn  = $('btnStart');
+      const resume = $('resumeCode');
 
-      // bornes 2..8
       nb.addEventListener('change', () => {
         const v = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
         nb.value = String(isNaN(v)?4:v);
       });
+
+      // Pré-remplir automatiquement le dernier code de soirée
+      (async function prefill(){
+        try{
+          // attend que l'API soit prête
+          for(let i=0;i<20;i++){
+            if(api && typeof api.getLatestCode === 'function') break;
+            await new Promise(r=>setTimeout(r,75));
+          }
+          if(api && api.getLatestCode){
+            const last = await api.getLatestCode();
+            if(last && last.length===4){ resume.value = last; }
+          }
+        }catch{}
+      })();
 
       btn.addEventListener('click', async () => {
         const n = Math.max(2, Math.min(8, parseInt(nb.value||'0',10)));
@@ -161,15 +191,9 @@
           .map(s => s.trim())
           .filter(Boolean);
 
-        if(names.length !== n){
-          showError(`Veuillez entrer exactement ${n} nom(s), une ligne par nom.`);
-          return;
-        }
+        if(names.length !== n){ showError(`Veuillez entrer exactement ${n} nom(s).`); return; }
 
-        // code hôte 4 chiffres
         const code = String(Math.floor(1000 + Math.random()*9000));
-
-        // mémo local (utile pour reprise)
         localStorage.setItem('sc_code', code);
         localStorage.setItem('sc_players', JSON.stringify(names));
         localStorage.setItem('sc_count', String(n));
@@ -178,12 +202,9 @@
           await api.create(code, names, n);
           showOk(`Soirée #${code} créée. Ouverture de l'écran hôte…`);
           window.location.href = `attente_confirmation.html?code=${code}&host=1`;
-        }catch(err){
-          showError(`Échec: ${err?.message||err}`);
-        }
+        }catch(err){ showError(`Échec: ${err?.message||err}`); }
       });
 
-      // Reprise
       const codeInput = $('resumeCode');
       const btnPlayer = $('btnJoinAsPlayer');
       const btnHost   = $('btnJoinAsHost');
@@ -191,54 +212,46 @@
 
       btnPlayer.addEventListener('click', ()=>{
         const v = sanitizeCode(codeInput.value || localStorage.getItem('sc_code'));
-        if(v.length!==4){ showError('Entrez un code à 4 chiffres pour rejoindre.'); return; }
+        if(v.length!==4){ showError('Entrez un code valide.'); return; }
         localStorage.setItem('sc_code', v);
         window.location.href = `confirmation_joueurs.html?code=${v}`;
       });
 
       btnHost.addEventListener('click', ()=>{
         const v = sanitizeCode(codeInput.value || localStorage.getItem('sc_code'));
-        if(v.length!==4){ showError('Entrez un code à 4 chiffres pour reprendre comme hôte.'); return; }
+        if(v.length!==4){ showError('Entrez un code valide.'); return; }
         localStorage.setItem('sc_code', v);
         window.location.href = `attente_confirmation.html?code=${v}&host=1`;
       });
     });
   </script>
 </head>
-
 <body>
   <main class="wrap">
     <section class="card grid">
       <h1>Soirée de carte</h1>
-      <p class="info">
-        Inscrire le nom des joueurs en commençant par le maître du jeu, puis dans le sens des aiguilles d’une montre.
-        L’ordre détermine l’ordre de jeu.
-      </p>
-
+      <p class="info">Inscrire le nom des joueurs en commençant par le maître du jeu, puis dans le sens horaire.</p>
       <label for="playersCount">Nombre de joueurs</label>
       <input id="playersCount" type="number" min="2" max="8" value="4" inputmode="numeric" />
-
       <label for="playersNames">Noms ou surnoms (une ligne par nom)</label>
-      <textarea id="playersNames" placeholder="Ex.&#10;Jean-François (hôte)&#10;Lise&#10;Marc&#10;Louise"></textarea>
-
+      <textarea id="playersNames" placeholder="Ex. Jean-François (hôte)\nLise\nMarc\nLouise"></textarea>
       <button class="btn" id="btnStart" disabled>Débuter la soirée</button>
-
-      <div id="error" class="err" role="alert"></div>
-      <div id="ok" class="ok" role="status"></div>
+      <div id="error" class="err"></div>
+      <div id="ok" class="ok"></div>
     </section>
 
     <section class="card grid">
       <h2>Reprendre une soirée</h2>
-      <label for="resumeCode">Code de la soirée (4 chiffres)</label>
+      <label for="resumeCode">Code (4 chiffres)</label>
       <input id="resumeCode" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Ex.: 1234" />
       <div class="cols">
         <button class="btn small" id="btnJoinAsPlayer" disabled>Rejoindre comme joueur</button>
         <button class="btn small" id="btnJoinAsHost" disabled>Reprendre comme hôte</button>
       </div>
-      <p class="info">Astuce : si le code est vide, on utilisera le dernier code mémorisé sur cet appareil.</p>
+      <p class="info">Le dernier code s’affiche automatiquement lorsqu’il est disponible.</p>
     </section>
 
-    <div class="footer">v2.5 • Firebase (prod) + SANDBOX (localStorage) • Hôte auto-confirmé</div>
+    <div class="footer">v3.1 • Firebase (prod) + SANDBOX • Hôte auto-confirmé • Pré-remplissage du dernier code</div>
   </main>
 </body>
 </html>
