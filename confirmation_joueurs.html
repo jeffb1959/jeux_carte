@@ -1,4 +1,4 @@
-<!-- v3.0 – 2025-11-02 – Version de référence stable, restaurée depuis v2.15 -->
+<!-- v3.1 – 2025-11-02 – Harmonisation visuelle (fond sombre 35%, texte blanc pur) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6,23 +6,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
   <title>Soirée de carte – Confirmation</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#ffffff; --muted:#dfe3ec; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text);font-size:1.05rem}
     .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:rgba(17,26,46,0.85);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(4px)}
-    h1{margin:4px 0 0;font-size:1.7rem}
-    .muted{color:var(--muted)}
-    .btn{appearance:none;border:none;cursor:pointer;padding:10px 14px;border-radius:12px;font-weight:700;background:var(--accent);color:#0c111b}
+    .card{background:rgba(0,0,0,0.35);border:1px solid #3a4a6a;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);color:#ffffff;font-size:1.1rem}
+    h1{margin:4px 0 0;font-size:1.8rem;color:#ffffff}
+    .muted{color:#ffffff}
+    .btn{appearance:none;border:none;cursor:pointer;padding:10px 14px;border-radius:12px;font-weight:700;background:var(--accent);color:#0c111b;font-size:1.05rem}
     .btn.small{padding:8px 12px}
     .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
     ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-    li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px dashed var(--line);border-radius:12px}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#0f1a30}
+    li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px dashed #3a4a6a;border-radius:12px;color:#ffffff}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,0.1);color:#ffffff}
     .ok{color:#22c55e}
     .warn{color:#f59e0b}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
+    .footer{color:#ffffff;text-align:center;font-size:.95rem;margin-top:8px}
   </style>
 
   <script type="module">
@@ -151,8 +152,7 @@
       <ul id="players"></ul>
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer" style="text-align:center;color:var(--muted)">v3.0 • Référence stable restaurée (base Firestore complète)</div>
+    <div class="footer">v3.1 • Fond sombre 35% • Texte blanc pur • Style harmonisé</div>
   </main>
 </body>
-
 </html>
