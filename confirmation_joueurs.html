@@ -1,5 +1,5 @@
-<!-- Version: v4.3 (2025-11-04) -->
-<!-- Correction: ajout enregistrement du deviceId au moment de la confirmation -->
+<!-- Version: v4.4 (2025-11-04) -->
+<!-- v4.4: Liste cliquable des joueurs (remplace le menu déroulant) + surbrillance verte quand confirmé -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7,14 +7,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Confirmation du joueur</title>
   <style>
-    :root { --bg:#0b1220; --text:#ffffff; --muted:#cfd8e3; --line:#243252; --accent:#60a5fa; }
+    :root { --bg:#0b1220; --text:#ffffff; --muted:#cfd8e3; --line:#243252; --accent:#60a5fa; --ok:#22c55e; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; font-family: system-ui, Segoe UI, Roboto, Arial; background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed; color: var(--text); }
     .wrap { display:grid; place-items:center; height:100vh; text-align:center; }
-    .card { background: rgba(17,26,46,0.35); border: 1px solid var(--line); border-radius:18px; box-shadow:0 12px 28px rgba(0,0,0,.35); backdrop-filter:blur(4px); padding:20px; width:min(360px,90vw); }
+    .card { background: rgba(17,26,46,0.35); border: 1px solid var(--line); border-radius:18px; box-shadow:0 12px 28px rgba(0,0,0,.35); backdrop-filter:blur(4px); padding:20px; width:min(420px,92vw); }
     h1 { font-size:1.8rem; margin-bottom:1rem; }
-    select { width:100%; padding:10px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,0.08); color:var(--text); font-size:1rem; margin-bottom:16px; }
-    .btn { appearance:none; border:none; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer; background:var(--accent); color:#031023; width:100%; }
+    .players { display:grid; gap:10px; margin-top:8px; }
+    .player { appearance:none; border:1px solid var(--line); border-radius:14px; padding:14px 16px; font-size:1.05rem;
+              background:rgba(255,255,255,0.08); color:var(--text); cursor:pointer; width:100%; text-align:center; }
+    .player[disabled] { opacity:.55; cursor:not-allowed; }
+    /* Surbrillance verte quand confirmé */
+    .player.confirmed { background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.45); color:#eaffef; }
+    .muted { color: var(--muted); }
     .err { margin-top:10px; background:#2b0e12; border:1px solid #6b1f28; padding:10px; border-radius:12px; color:#ffd6db; display:none; }
   </style>
   <script type="module">
@@ -53,33 +58,45 @@
       if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable'; return; }
       const data = snap.data();
       const players = data.players || [];
-      const select = $('playerSelect');
-      select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>' + players.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+      const list = $('players');
+      list.innerHTML = '';
+      players
+        .map((p,i)=>({ ...p, __i:i }))
+        .sort((a,b)=>(a?.order??0)-(b?.order??0))
+        .forEach(p=>{
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'player' + (p.confirmed ? ' confirmed' : '');
+          btn.textContent = p?.name || ('Joueur '+(p.__i+1));
+          btn.addEventListener('click', ()=> confirmPlayer(p.__i));
+          list.appendChild(btn);
+        });
     }
 
-    async function confirmPlayer(){
-      const select = $('playerSelect');
-      const idx = select.value;
-      if(idx===''){ $('error').style.display='block'; $('error').textContent='Veuillez sélectionner votre nom.'; return; }
+    async function confirmPlayer(index){
       const ref = doc(db, 'soirees', CODE);
       const snap = await getDoc(ref);
       if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
       const data = snap.data();
       const players = data.players || [];
-      const player = players[idx];
+      const player = players[index];
 
       // Vérifie si un autre joueur utilise déjà cet appareil
-      const alreadyLinked = players.find(p=>p.deviceId===DEVICE_ID && p.name!==player.name);
+      const alreadyLinked = players.find(p=>p.deviceId===DEVICE_ID && p.name!==player?.name);
       if(alreadyLinked){ $('error').style.display='block'; $('error').textContent='Cet appareil est déjà associé à un autre joueur.'; return; }
 
       // Enregistre le deviceId et confirme le joueur
-      player.deviceId = DEVICE_ID;
-      player.confirmed = true;
-      players[idx] = player;
+      players[index] = { ...(player||{}), deviceId: DEVICE_ID, confirmed: true };
 
       try {
         await updateDoc(ref, { players });
-        alert(`Confirmation enregistrée pour ${player.name}`);
+        // Mise à jour visuelle immédiate : vert + verrouillage local
+        document.querySelectorAll('.player').forEach((b, i)=>{
+          if(i===index){ b.classList.add('confirmed'); }
+          b.disabled = true;
+        });
+        alert(`Confirmation enregistrée pour ${player?.name||('Joueur '+(index+1))}`);
+        // Redirection identique à la version précédente
         location.href = `attente_confirmation.html?code=${CODE}`;
       } catch(e){
         console.error(e);
@@ -90,7 +107,6 @@
 
     window.addEventListener('DOMContentLoaded', ()=>{
       loadPlayers();
-      $('confirmBtn').addEventListener('click', confirmPlayer);
     });
   </script>
 </head>
@@ -98,8 +114,9 @@
   <div class="wrap">
     <div class="card">
       <h1>Confirmation du joueur</h1>
-      <select id="playerSelect"></select>
-      <button id="confirmBtn" class="btn">Confirmer ma présence</button>
+      <p class="muted">Clique sur ton nom pour te confirmer. Un appareil ⟷ un joueur.</p>
+      <!-- Liste cliquable au lieu du select -->
+      <div id="players" class="players"></div>
       <div id="error" class="err" role="alert"></div>
     </div>
   </div>
