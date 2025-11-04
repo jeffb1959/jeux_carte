@@ -1,5 +1,5 @@
 <!-- Version: v4.1 (2025-11-03) -->
-<!-- v4.1 mobile layout + fond transparent carte -->
+<!-- v4.1 mobile layout + fond transparent carte | JS complet -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -12,13 +12,10 @@
     html,body{height:100%}
     body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text)}
     .wrap{min-height:100vh;display:grid;place-items:center;padding:18px}
-    /* carte principale */
     #card{width:min(760px,94vw);background:rgba(17,26,46,0.35);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 28px rgba(0,0,0,.35);backdrop-filter:blur(4px);padding:18px;color:#ffffff;font-size:1.05rem}
-
     h1{margin:.2rem 0 .4rem;font-size:1.9rem}
     .muted{color:var(--muted)}
-
-    .grid{display:grid;grid-template-columns: 1fr 220px; gap:14px; align-items:start}
+    .grid{display:grid;grid-template-columns:1fr 220px;gap:14px;align-items:start}
     .panel{background:rgba(3,9,20,.35);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;color:#ffffff;font-size:1rem}
     #qrcode{display:grid;place-items:center}
     .btn{appearance:none;border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:#031023}
@@ -30,21 +27,60 @@
     .wait{color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
     .stats{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .err{margin-top:8px;background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
-
-    /* Mobile layout */
-    @media (max-width: 390px){
-      .grid{display:none}
-      #mobileStack{display:grid;gap:12px}
-      #qrContainer{display:grid;place-items:center}
-      #qrcode{width:150px;height:150px}
-      #qrcode > img, #qrcode > canvas{width:150px;height:150px}
-      #roomLink{width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#ffffff}
-      .btn-row{display:flex;gap:8px;justify-content:center}
-      #playersSection{background:rgba(3,9,20,.35);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;color:#ffffff}
-      #playersSection label{display:block;margin-bottom:6px;color:var(--muted)}
-      #playerSelect{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#ffffff}
-    }
+    @media (max-width:390px){.grid{display:none}#mobileStack{display:grid;gap:12px}#qrContainer{display:grid;place-items:center}#qrcode{width:150px;height:150px}#qrcode>img,#qrcode>canvas{width:150px;height:150px}#roomLink{width:100%;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#ffffff}.btn-row{display:flex;gap:8px;justify-content:center}#playersSection{background:rgba(3,9,20,.35);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;color:#ffffff}#playersSection label{display:block;margin-bottom:6px;color:var(--muted)}#playerSelect{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#ffffff}}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+    import { getFirestore, doc, onSnapshot, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+
+    const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2', storageBucket:'soireecartev2.firebasestorage.app', messagingSenderId:'784781686361', appId:'1:784781686361:web:033693cb22fb1a55af2348' };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (id)=>document.getElementById(id);
+    const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const qs = new URLSearchParams(location.search);
+    const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
+
+    function expectedCount(data){ const p=Array.isArray(data.players)?data.players:[]; return Number(data.playerCount||p.length)||p.length; }
+    function confirmedCount(data){ const p=Array.isArray(data.players)?data.players:[]; return p.filter(x=>x && x.confirmed===true).length; }
+
+    function renderList(data){
+      const players = Array.isArray(data.players)?data.players.slice():[];
+      const ul = $('playerList'); ul.innerHTML='';
+      players.sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
+        const li=document.createElement('li');
+        li.innerHTML=`<span>${esc(p?.name||`Joueur ${i+1}`)}</span>`+`<span class="pill ${p?.confirmed?'ok':'wait'}">${p?.confirmed?'Confirmé ✓':'En attente…'}</span>`;
+        ul.appendChild(li);
+      });
+      const exp=expectedCount(data), conf=confirmedCount(data);
+      $('stats').textContent=`${conf}/${exp} confirmé(s)`;
+      const sel=$('playerSelect');
+      if(sel) sel.innerHTML=players.map((p,i)=>`<option>${esc(p?.name||`Joueur ${i+1}`)} — ${p?.confirmed?'Confirmé':'En attente'}</option>`).join('');
+    }
+
+    async function ensureAuth(){ try{await signInAnonymously(auth);}catch(e){} }
+
+    function setupQR(){
+      $('sessionCode').textContent=CODE||'----';
+      const link=`https://jads.ca/confirmation_joueurs.html?code=${encodeURIComponent(CODE)}`;
+      const join=$('joinLink'); if(join) join.value=link;
+      const room=$('roomLink'); if(room) room.value=link;
+      const node=$('qrcode'); if(node){ node.innerHTML=''; new QRCode(node,{text:link,width:210,height:210}); }
+    }
+
+    async function maybeStartGame(data){ const exp=expectedCount(data), conf=confirmedCount(data); if(exp>0 && conf===exp){ if(String(data.status)!=='playing'){ try{await updateDoc(doc(db,'soirees',CODE),{status:'playing'});}catch{} } setTimeout(()=>{location.href=`selection_jeux.html?code=${CODE}`;},800); } }
+
+    let unwatch=null;
+    async function init(){ if(!CODE){$('error').style.display='block';$('error').textContent='Code de soirée manquant dans l\'URL.';return;} await ensureAuth(); setupQR(); const ref=doc(db,'soirees',CODE); const first=await getDoc(ref); if(!first.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} renderList(first.data()); unwatch=onSnapshot(ref,(snap)=>{ if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} const data=snap.data(); renderList(data); if(String(data.status)==='playing'){ location.href=`selection_jeux.html?code=${CODE}`; return;} maybeStartGame(data); },(err)=>{ $('error').style.display='block'; $('error').textContent='Erreur: '+(err?.message||err); }); }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
 </head>
 <body>
   <div class="wrap">
@@ -54,17 +90,16 @@
         <div class="code">Code: <span id="sessionCode">----</span></div>
       </div>
       <p class="muted">Demandez aux joueurs de scanner le code QR ou d'ouvrir le lien pour se confirmer.</p>
-
       <div id="mobileStack">
         <div id="qrContainer" class="panel">
-          <h3 style="margin:.2rem 0 .6rem">Code QR</h3>
+          <h3 style="margin:.2rem 0 .6rem">Code QR</h3>
           <div id="qrcode" style="width:210px;height:210px;margin:auto"></div>
         </div>
         <input id="roomLink" type="text" readonly />
         <input id="joinLink" type="hidden" readonly />
         <div class="btn-row">
-          <button id="copyLinkBtn" class="btn">Copier le lien</button>
-          <button id="refreshBtn" class="btn ghost">Rafraîchir</button>
+          <button id="copyLinkBtn" class="btn" onclick="navigator.clipboard.writeText(document.getElementById('joinLink').value)">Copier le lien</button>
+          <button id="refreshBtn" class="btn ghost" onclick="location.reload()">Rafraîchir</button>
         </div>
         <div id="playersSection" class="panel">
           <label for="playerSelect">Joueurs</label>
@@ -74,7 +109,6 @@
           <div id="error" class="err" role="alert"></div>
         </div>
       </div>
-
       <p class="muted" style="margin-top:12px">La partie démarre automatiquement quand tous les joueurs sont confirmés.</p>
     </div>
   </div>
