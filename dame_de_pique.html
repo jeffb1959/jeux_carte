@@ -1,53 +1,389 @@
-<!--
-  Page 3.1 — dame_de_pique.html
-  Version: v1.1 (2025-10-30)
-  Auteur: Jean‑François + ChatGPT
-  Objet: Titre + bouton Retour vers la sélection du jeu (mobile).
--->
+<!-- Version: v4.5 (2025-11-04) -->
+<!-- Dame de Pique – Implémentation MVP connectée Firestore (mobile ≤390px) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de pique</title>
+  <title>Dame de Pique — Saisie du score</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --line:#243252; --dealer:#0b5a29; }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
-    .wrap{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    h1{margin:4px 0 0;font-size:1.8rem}
-    .muted{color:var(--muted)}
-    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:56px;padding:16px;border-radius:16px;font-size:1.15rem;font-weight:800;color:#0c111b;background:var(--accent)}
-    .footer{color:var(--muted);text-align:center;font-size:.95rem}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body.dealer{ background: linear-gradient(180deg, var(--dealer), #062612 60%); }
+    .wrap{max-width:390px;margin:0 auto;padding:16px;display:grid;gap:16px;place-items:center}
+    .titleRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%}
+    h1{margin:0;font-size:clamp(22px,5vw,28px)}
+    .lbl{color:var(--muted);font-size:clamp(15px,4vw,18px)}
+
+    .brasseur{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .brName{font-size:clamp(18px,5vw,22px);font-weight:700;color:var(--accent)}
+    .swap{font-size:clamp(14px,4vw,16px);color:var(--muted)}
+
+    .card{width:100%;background:color-mix(in srgb, var(--card) 90%, white 10%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .grid{display:grid;gap:12px}
+
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:52px;padding:0 16px;border-radius:16px;font-size:clamp(17px,4vw,19px);font-weight:800;color:#0c111b;background:var(--accent)}
+    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
+    .btn[disabled]{opacity:.6;filter:grayscale(.3);cursor:not-allowed}
+
+    .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
+    .name{font-size:clamp(15px,4vw,18px)}
+    .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
+
+    .footer{text-align:center;color:var(--muted)}
+    .back{color:#9bb3d1;text-decoration:none}
+    .back:hover{text-decoration:underline}
+
+    /* Modal */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);}
+    .modal.show{display:grid}
+    .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
+    .mTitle{margin:0 0 8px;font-size:1.2rem}
+    .row{display:grid;gap:8px}
+    .scoreRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+    .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
+    .tag{padding:4px 8px;border-radius:999px;border:1px solid #334567;color:#cfe1ff;background:rgba(255,255,255,.06);font-size:.9rem}
+    .tag.ok{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.1);color:#baf7c9}
+    .tag.wait{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#ffe6b3}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+    .warn{color:var(--warn)}
+    .err{color:#ffd6db;background:#2b0e12;border:1px solid #6b1f28;padding:8px;border-radius:10px}
+
+    /* Fin de partie */
+    .honors{display:grid;gap:8px}
+    .winner{color:var(--ok);font-weight:800}
+    .hold{user-select:none}
   </style>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    const firebaseConfig = { apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg", authDomain: "soireecartev2.firebaseapp.com", projectId: "soireecartev2" };
-    initializeApp(firebaseConfig);
-    const qs = (k)=>new URLSearchParams(location.search).get(k);
-    const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
-    let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
-    window.addEventListener('DOMContentLoaded',()=>{
-      if(!code){ location.href='selection_jeux.html'; return; }
-      document.getElementById('titleCode').textContent = `#${code}`;
-      document.getElementById('btnBack').addEventListener('click', ()=>{
-        location.href = `Selection_Jeux.html?code=${code}`;
-      });
-    });
-  </script>
 </head>
 <body>
   <main class="wrap">
-    <section class="card">
-      <h1>Dame de pique <span class="muted" id="titleCode"></span></h1>
+    <header class="titleRow">
+      <h1>Dame De Pique</h1>
+      <div class="lbl">Tour n° <span id="round">1</span></div>
+    </header>
+
+    <div class="brasseur">
+      <div>Brasseur : <span id="dealerName" class="brName">—</span></div>
+      <div class="swap" id="swapInfo">—</div>
+    </div>
+
+    <section class="card grid" aria-labelledby="lblSaisie">
+      <div id="lblSaisie" class="lbl">Saisissez votre score</div>
+      <button id="btnOpen" class="btn">Inscrire le pointage</button>
     </section>
-    <section class="card">
-      <button id="btnBack" class="btn">⟵ Retour au choix du jeu</button>
+
+    <section class="card grid" id="totalsCard">
+      <div class="lbl">Scores totaux</div>
+      <div id="totalsList" class="grid"></div>
+      <div class="lbl">Soirée #<span id="code">----</span></div>
     </section>
-    <div class="footer">v1.1 • Titre + bouton Retour</div>
+
+    <div class="footer">
+      <a class="back" href="selection_jeux.html">← Retour</a>
+    </div>
   </main>
+
+  <!-- Modal saisie des scores du tour -->
+  <div class="modal" id="modal">
+    <div class="sheet">
+      <h3 class="mTitle">Scores du tour</h3>
+      <div id="inputs" class="row"></div>
+      <div class="bar">
+        <div class="lbl">Total du tour: <span id="sum">0</span> / 25</div>
+        <button id="btnFinalize" class="btn" disabled>Finaliser le tour</button>
+      </div>
+      <div id="mErr" class="err" style="display:none"></div>
+      <div class="lbl warn" style="margin-top:6px">Chaque joueur saisit son propre score sur son appareil.</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="btnClose" class="btn ghost">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fin de partie -->
+  <div class="modal" id="gameOver">
+    <div class="sheet">
+      <h3 class="mTitle">Fin de la partie</h3>
+      <div id="honors" class="honors"></div>
+      <button id="btnHoldEnd" class="btn hold">Maintenir 2 s pour terminer</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+    import { getFirestore, doc, getDoc, onSnapshot, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg',
+      authDomain: 'soireecartev2.firebaseapp.com',
+      projectId: 'soireecartev2',
+      storageBucket: 'soireecartev2.firebasestorage.app',
+      messagingSenderId: '784781686361',
+      appId: '1:784781686361:web:033693cb22fb1a55af2348'
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (id)=>document.getElementById(id);
+    const qs = new URLSearchParams(location.search);
+    const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
+    const GID  = qs.get('gid')||null; // id du document dans scores_dame_de_pique
+
+    // Device id local
+    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+'_'+Math.random().toString(36).slice(2));
+    localStorage.setItem('deviceId', DEVICE_ID);
+
+    const swapCycle = ['À droite','À gauche','Au centre','Garde tes cartes'];
+
+    let soireeRef, gameRef, stopSoiree, stopGame;
+    let players = []; // [{name, order, deviceId}]
+
+    function dealerIndexFor(round, leaderIndex, n){
+      if(typeof leaderIndex !== 'number' || leaderIndex<0) return 0;
+      if(!n||n<=0) return 0;
+      return (leaderIndex + (round-1)) % n;
+    }
+
+    function renderDealer(round, leaderIndex){
+      const idx = dealerIndexFor(round, leaderIndex, players.length);
+      const dealer = players[idx];
+      $('#dealerName').textContent = dealer?.name || '—';
+      $('#swapInfo').textContent = swapCycle[(round-1)%4];
+      // highlight seulement sur l'appareil du brasseur
+      const isDealerDevice = dealer?.deviceId && dealer.deviceId === DEVICE_ID;
+      document.body.classList.toggle('dealer', !!isDealerDevice);
+    }
+
+    function renderTotals(totals){
+      const box = $('#totalsList');
+      box.innerHTML = '';
+      players
+        .map((p,i)=>({ ...p, total: totals?.[i] ?? 0 }))
+        .sort((a,b)=>(a?.order??0)-(b?.order??0))
+        .forEach(p=>{
+          const line = document.createElement('div');
+          line.className = 'line';
+          line.innerHTML = `<div class="name">${p.name||'—'}</div><div class="pts">${Number(p.total||0)}</div>`;
+          box.appendChild(line);
+        });
+    }
+
+    function openModal(){
+      // Quand on ouvre la saisie, on enlève la mise en évidence brasseur (contrainte demandée)
+      document.body.classList.remove('dealer');
+      $('#modal').classList.add('show');
+    }
+    function closeModal(){ $('#modal').classList.remove('show'); }
+
+    function openGameOver(){ $('#gameOver').classList.add('show'); }
+
+    function buildInputsUI(state){
+      const inputs = state.currentInputs || {}; // index -> number
+      const confirmed = state.confirmedInputs || {}; // index -> true
+      const wrap = $('#inputs');
+      wrap.innerHTML = '';
+
+      players
+        .map((p,i)=>({...p, __i:i}))
+        .sort((a,b)=>(a?.order??0)-(b?.order??0))
+        .forEach(p=>{
+          const row = document.createElement('div');
+          row.className = 'scoreRow';
+          const val = (inputs[p.__i] ?? '').toString();
+          const tag = document.createElement('div');
+          tag.className = 'tag ' + (confirmed[p.__i] ? 'ok' : 'wait');
+          tag.textContent = confirmed[p.__i] ? 'Validé' : (val!=='' ? `${val}` : '—');
+
+          const name = document.createElement('div');
+          name.className = 'name';
+          name.textContent = p.name || `Joueur ${p.__i+1}`;
+
+          // Seul l'utilisateur local peut saisir pour son index
+          const isMe = p.deviceId && p.deviceId === DEVICE_ID;
+          if(isMe){
+            const inp = document.createElement('input');
+            inp.type = 'number'; inp.min = '0'; inp.max = '25'; inp.step = '1';
+            inp.placeholder = '0–25'; inp.className = 'inp';
+            inp.value = val;
+            inp.addEventListener('input', ()=>{
+              const v = inp.value.trim();
+              const n = v==='' ? '' : Math.max(0, Math.min(25, Number(v)));
+              updateDoc(gameRef, { [`currentInputs.${p.__i}`]: n });
+            });
+
+            const cell = document.createElement('div');
+            cell.style.display='grid';
+            cell.style.gridTemplateColumns='1fr auto';
+            cell.style.gap='8px';
+
+            const btn = document.createElement('button');
+            btn.className='btn';
+            btn.textContent='Valider mon score';
+            btn.addEventListener('click', ()=>{
+              const cur = inp.value.trim();
+              if(cur==='' || isNaN(Number(cur))) return;
+              const n = Math.max(0, Math.min(25, Number(cur)));
+              updateDoc(gameRef, { [`currentInputs.${p.__i}`]: n, [`confirmedInputs.${p.__i}`]: true });
+            });
+
+            cell.appendChild(inp);
+            cell.appendChild(btn);
+            row.appendChild(name);
+            row.appendChild(cell);
+          } else {
+            row.appendChild(name);
+            row.appendChild(tag);
+          }
+
+          wrap.appendChild(row);
+        });
+
+      // Somme et état bouton Finaliser
+      const sum = Object.values(inputs).reduce((a,b)=> a + (Number(b)||0), 0);
+      $('#sum').textContent = sum;
+      const everyoneConfirmed = players.length>0 && players.every((_,i)=> !!confirmed[i]);
+      $('#btnFinalize').disabled = !(everyoneConfirmed && sum===25);
+      $('#mErr').style.display = (sum===25 || !everyoneConfirmed) ? 'none' : 'block';
+      $('#mErr').textContent = everyoneConfirmed && sum!==25 ? 'Le total n\'est pas 25. Vérifiez vos scores.' : '';
+    }
+
+    async function finalizeRound(state){
+      // Appliquer règle Grand Chelem si 25 / 0 / 0 / ...
+      const n = players.length;
+      let inputs = {...(state.currentInputs||{})};
+      let arr = Array.from({length:n}, (_,i)=> Number(inputs[i]||0));
+      const max = Math.max(...arr);
+      const zeros = arr.filter(x=>x===0).length;
+      if(max===25 && zeros===n-1){
+        const idxMax = arr.findIndex(x=>x===25);
+        arr = arr.map((x,i)=> i===idxMax ? 0 : 25);
+      }
+
+      // Ecrire le tour et avancer round
+      const round = Number(state.round||1);
+      const nextRound = round + 1;
+      const prevTotals = state.totals || Array.from({length:n}, ()=>0);
+      const totals = prevTotals.map((t,i)=> t + (Number(arr[i])||0));
+
+      const payload = {
+        [`rounds.${round}`]: arr, // stockage 1-indexé pour lisibilité
+        totals,
+        round: nextRound,
+        currentInputs: {},
+        confirmedInputs: {},
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(gameRef, payload);
+      closeModal();
+    }
+
+    function renderGame(state, soiree){
+      const round = Number(state.round || 1);
+      $('#round').textContent = round;
+      $('#code').textContent  = CODE || '----';
+      renderDealer(round, soiree.leaderIndex);
+      renderTotals(state.totals || []);
+
+      // Fin de partie ? >=100
+      const totals = state.totals || [];
+      const reached = totals.some(t=> Number(t)>=100);
+      if(reached){
+        // déterminer classement
+        const ranked = players.map((p,i)=>({name:p.name||`Joueur ${i+1}`, score:Number(totals[i]||0)}))
+                              .sort((a,b)=> a.score - b.score);
+        const winner = ranked[0];
+        const gap = ranked[1] ? (ranked[1].score - winner.score) : 0;
+        const panel = $('#honors'); panel.innerHTML='';
+        ranked.forEach((r,i)=>{
+          const line = document.createElement('div');
+          line.className = 'line' + (i===0? ' winner':'' );
+          line.innerHTML = `<div class="name">${r.name}</div><div class="pts">${r.score}</div>`;
+          panel.appendChild(line);
+        });
+        $('#gameOver').classList.add('show');
+        // Enregistrer fin de partie (idempotent)
+        updateDoc(gameRef, { state:'done', finishedAt: serverTimestamp(), winnerName:winner.name, winnerScore:winner.score, winnerGap:gap }).catch(()=>{});
+      }
+    }
+
+    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){} }
+
+    async function init(){
+      if(!CODE || !GID){
+        alert('Paramètres manquants (code/gid).');
+        location.href = `selection_jeux.html?code=${CODE||''}`; return;
+      }
+      await ensureAuth();
+
+      soireeRef = doc(db,'soirees', CODE);
+      gameRef   = doc(db,'scores_dame_de_pique', GID);
+
+      // S'abonner à la soirée (noms + deviceIds + leaderIndex)
+      stopSoiree = onSnapshot(soireeRef, (snap)=>{
+        if(!snap.exists()) return;
+        const s = snap.data();
+        players = (Array.isArray(s.players)?s.players:[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      });
+
+      // S'abonner à l'état de jeu
+      stopGame = onSnapshot(gameRef, (snap)=>{
+        if(!snap.exists()) return;
+        const g = snap.data();
+        // Hydrater UI (dealer, round, totals)
+        renderGame({
+          round: g.round || 1,
+          totals: g.totals || [],
+          currentInputs: g.currentInputs || {},
+          confirmedInputs: g.confirmedInputs || {}
+        }, g);
+        // Si modal ouverte, mettre à jour la vue en temps réel
+        if($('#modal').classList.contains('show')){
+          buildInputsUI({
+            round: g.round || 1,
+            currentInputs: g.currentInputs || {},
+            confirmedInputs: g.confirmedInputs || {}
+          });
+        }
+      });
+
+      // Actions UI
+      $('#btnOpen').addEventListener('click', ()=>{
+        openModal();
+        // (Ré)construire le contenu de la modale à l'ouverture
+        getDoc(gameRef).then(s=>{
+          const g = s.data()||{};
+          buildInputsUI({ round:g.round||1, currentInputs:g.currentInputs||{}, confirmedInputs:g.confirmedInputs||{} });
+        });
+      });
+      $('#btnClose').addEventListener('click', closeModal);
+      $('#btnFinalize').addEventListener('click', async ()=>{
+        const s = await getDoc(gameRef); const g = s.data()||{};
+        const inputs = g.currentInputs||{}; const confirmed = g.confirmedInputs||{};
+        const sum = Object.values(inputs).reduce((a,b)=> a+(Number(b)||0), 0);
+        const everyone = players.length>0 && players.every((_,i)=> !!confirmed[i]);
+        if(!(everyone && sum===25)) return; // garde-fou
+        await finalizeRound(g);
+      });
+
+      // Fin de partie : bouton à maintenir 2s
+      let holdTimer=null;
+      const goBtn = $('#btnHoldEnd');
+      const startHold = ()=>{ holdTimer = setTimeout(()=>{ location.href=`selection_jeux.html?code=${CODE}`; }, 2000); };
+      const cancelHold = ()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+      ['mousedown','touchstart'].forEach(ev=> goBtn.addEventListener(ev, startHold));
+      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> goBtn.addEventListener(ev, cancelHold));
+
+      // Afficher code
+      $('#code').textContent = CODE;
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
 </body>
 </html>
-
