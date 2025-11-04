@@ -1,7 +1,5 @@
-<!-- Version: v4.3.1 (2025-11-03) -->
-<!-- v4.3.1 Fix: sanitizeCode regex + brackets; add lightweight tests (no behavior change) -->
-<!-- v4.3    Démarrage d'une partie: crée un doc de score par jeu avec leader + redirection avec gid -->
-<!-- v4.2    Sélection du premier brasseur + boutons joueurs + désactivation initiale des jeux -->
+<!-- Version: v4.3.3 (2025-11-03) -->
+<!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -24,47 +22,79 @@
     .row{display:grid;gap:10px}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .footer{color:var(--muted);text-align:center;font-size:.95rem}
+    /* Badge & style brasseur */
+    .btn.leader{ background: rgba(239,68,68,0.20); border:1px solid rgba(239,68,68,0.45); }
+    .badge{ display:inline-block; margin-left:10px; padding:4px 8px; border-radius:999px; font-size:.85rem; font-weight:700; background:#fecaca; color:#7f1d1d; vertical-align:middle }
   </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, onSnapshot, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
       authDomain: "soireecartev2.firebaseapp.com",
       projectId: "soireecartev2"
     };
+
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
     const $ = (id)=>document.getElementById(id);
     const qs = (k)=>new URLSearchParams(location.search).get(k);
-
-    // Fix: proper regex literal (no stray backslash/newline)
     const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
 
-    // --- Lightweight tests (no behavior change) ---
-    (function test_sanitizeCode(){
-      console.assert(sanitizeCode('1234')==='1234','T1 simple');
-      console.assert(sanitizeCode(' 12-34 ')==='1234','T2 remove non-digits');
-      console.assert(sanitizeCode('abcd')==='', 'T3 letters → empty');
-      console.assert(sanitizeCode('98765')==='9876','T4 truncate to 4');
-    })();
-
-    let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
-
-    function disableGameButtons(disabled=true){
-      ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }});
-    }
-    function setPlayersButtonsEnabled(enabled){
-      const container = $('playersBtns');
-      if(!container) return;
-      [...container.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled);
+    // Identifiant d'appareil (persisté localement)
+    function getDeviceId(){
+      let id = localStorage.getItem('deviceId') || localStorage.getItem('mgm_deviceId');
+      if(!id){
+        if (window.crypto?.randomUUID){ id = crypto.randomUUID(); }
+        else { id = 'did_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+        localStorage.setItem('deviceId', id);
+      }
+      return id;
     }
 
     async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){} }
+
+    let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+
+    function disableGameButtons(disabled=true){ ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }}); }
+    function setPlayersButtonsEnabled(enabled){
+      const container = $('playersBtns'); if(!container) return;
+      [...container.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled);
+    }
+
+    function renderLeaderDecor(data){
+      const container = $('playersBtns'); if(!container) return;
+      const leaderIdx = (typeof data?.leaderIndex === 'number') ? data.leaderIndex : null;
+      [...container.querySelectorAll('button[data-player-index]')].forEach(b=>{
+        b.classList.remove('leader');
+        const old = b.querySelector('.badge'); if(old) old.remove();
+      });
+      if(leaderIdx!==null){
+        const btn = container.querySelector(`button[data-player-index="${leaderIdx}"]`);
+        if(btn){
+          btn.classList.add('leader');
+          const tag = document.createElement('span'); tag.className='badge'; tag.textContent='Brasseur';
+          btn.appendChild(tag);
+        }
+      }
+    }
+
+    function applyLeaderState(data){
+      const hasLeader = (typeof data?.leaderIndex === 'number');
+      renderLeaderDecor(data);
+      if(hasLeader){
+        setPlayersButtonsEnabled(false);
+        const isLeaderHere = data?.leaderDeviceId && data.leaderDeviceId === getDeviceId();
+        disableGameButtons(!isLeaderHere);
+      }else{
+        setPlayersButtonsEnabled(true);
+        disableGameButtons(true);
+      }
+    }
 
     async function loadPlayers(){
       const ref = doc(db,'soirees', code);
@@ -73,10 +103,7 @@
       const data = snap.data();
       const players = Array.isArray(data.players)? data.players : [];
 
-      // Affiche le code titre
       $('titleCode').textContent = `#${code}`;
-
-      // Construit les boutons joueurs
       const zone = $('playersBtns');
       zone.innerHTML = '';
       players.sort((a,b)=> (a?.order??0) - (b?.order??0)).forEach((p, idx)=>{
@@ -89,30 +116,24 @@
         zone.appendChild(btn);
       });
 
-      // Au chargement : jeux inactifs, joueurs actifs
-      disableGameButtons(true);
-      setPlayersButtonsEnabled(true);
+      applyLeaderState(data);
     }
 
     async function selectDealer(index, player){
-      // Désactive tous les boutons joueurs
+      // Désactive localement; l'écoute temps réel fera foi pour activer les jeux seulement sur le leader
       setPlayersButtonsEnabled(false);
-      // Active les jeux pour ce choix local
       disableGameButtons(false);
-
-      // Sauvegarde du brasseur dans Firestore (pour usage futur)
       try{
         const ref = doc(db,'soirees', code);
         await updateDoc(ref, {
           leaderIndex: index,
           leaderName: player?.name || null,
-          leaderDeviceId: player?.deviceId || null,
+          leaderDeviceId: getDeviceId(),
           leaderAt: serverTimestamp()
         });
-      }catch(e){ /* affichage local seulement si besoin */ }
+      }catch(e){ console.warn('Erreur Firestore',e); }
     }
 
-    // Crée un document de score pour le jeu choisi en recopiant le leader
     async function startGameWithLeader(gameType){
       const soireeRef = doc(db,'soirees', code);
       const snap = await getDoc(soireeRef);
@@ -130,8 +151,6 @@
         leaderIndex: (typeof s.leaderIndex === 'number') ? s.leaderIndex : null,
         startedAt: serverTimestamp(),
         state: 'in_progress'
-        // Optionnel: figer l'état initial des joueurs
-        // players: Array.isArray(s.players) ? s.players.map(p=>({name:p.name, deviceId:p.deviceId||null})) : []
       });
 
       const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html'
@@ -141,43 +160,42 @@
       location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
     }
 
-    function resetDealer(){
-      // Réactive les boutons joueurs et désactive la sélection des jeux
-      setPlayersButtonsEnabled(true);
-      disableGameButtons(true);
+    async function resetDealer(){
+      try{
+        const ref = doc(db,'soirees', code);
+        await updateDoc(ref, {
+          leaderIndex: deleteField(),
+          leaderName: null,
+          leaderDeviceId: null,
+          leaderAt: deleteField()
+        });
+      }catch(e){ console.warn('resetDealer update failed', e); }
+      // L'écoute temps réel supprimera le badge et réinitialisera l'UI
     }
 
     function showError(msg){ const e=$('error'); if(!e) return; e.style.display='block'; e.textContent=msg; }
 
     window.addEventListener('DOMContentLoaded', async ()=>{
-      // Tests DOM légers (les boutons de jeux doivent être inactifs au départ)
-      setTimeout(()=>{
-        try{
-          console.assert($("btnDP").disabled===true && $("btnCH").disabled===true && $("btnJ9").disabled===true, 'T5 game buttons disabled on load');
-        }catch(_){/* no-op */}
-      }, 0);
-
-      if(!code){
-        const v = prompt('Entrez le code de la soirée (4 chiffres)')||'';
-        code = sanitizeCode(v);
-        if(code.length!==4){ alert('Code invalide. Retour index.'); location.href='index.html'; return; }
-        localStorage.setItem('sc_code', code);
-      }
+      if(!code){ const v = prompt('Entrez le code de la soirée (4 chiffres)')||''; code = sanitizeCode(v); if(code.length!==4){ alert('Code invalide. Retour index.'); location.href='index.html'; return; } localStorage.setItem('sc_code', code); }
       await ensureAuth();
       await loadPlayers();
 
-      // Routage des jeux (reste identique)
+      const ref = doc(db,'soirees', code);
+      onSnapshot(ref, (snap)=>{
+        if(!snap.exists()) return;
+        const d = snap.data();
+        applyLeaderState(d);
+      });
+
       $('btnDP').addEventListener('click', ()=> startGameWithLeader('dame_de_pique'));
       $('btnCH').addEventListener('click', ()=> startGameWithLeader('chialeux'));
       $('btnJ9').addEventListener('click', ()=> startGameWithLeader('jeu_du_9'));
-
       $('resetDealerBtn').addEventListener('click', resetDealer);
     });
   </script>
 </head>
 <body>
   <main class="wrap">
-    <!-- Sélection du brasseur -->
     <section class="card grid">
       <h1>Sélectionner le brasseur <span class="muted" id="titleCode"></span></h1>
       <div id="playersBtns" class="row"></div>
@@ -185,7 +203,6 @@
       <div id="error" class="err" role="alert"></div>
     </section>
 
-    <!-- Sélection du jeu (inactive tant que brasseur non choisi) -->
     <section class="card grid">
       <h1>Sélectionner le type de jeu</h1>
       <button id="btnDP" class="btn" disabled>Dame de pique</button>
@@ -193,7 +210,7 @@
       <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
     </section>
 
-    <div class="footer">v4.3.1 • Choix du brasseur & jeux • Code propagé</div>
+    <div class="footer">v4.3.3 • Jeux actifs uniquement sur l'appareil du brasseur + badge visuel</div>
   </main>
 </body>
 </html>
