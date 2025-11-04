@@ -1,4 +1,4 @@
-<!-- Version: v4.3.3 (2025-11-03) -->
+<!-- Version: v4.3.4 (2025-11-03) -->
 <!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -120,15 +120,16 @@
     }
 
     async function selectDealer(index, player){
-      // Désactive localement; l'écoute temps réel fera foi pour activer les jeux seulement sur le leader
+      // Désactive localement la sélection; l'activation des jeux sera gérée par l'écoute temps réel
       setPlayersButtonsEnabled(false);
-      disableGameButtons(false);
+      disableGameButtons(true);
       try{
         const ref = doc(db,'soirees', code);
         await updateDoc(ref, {
           leaderIndex: index,
           leaderName: player?.name || null,
-          leaderDeviceId: getDeviceId(),
+          // IMPORTANT: activer les jeux sur l'appareil DU JOUEUR sélectionné (et non sur l'appareil qui clique)
+          leaderDeviceId: player?.deviceId || null,
           leaderAt: serverTimestamp()
         });
       }catch(e){ console.warn('Erreur Firestore',e); }
@@ -210,7 +211,7 @@
       <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
     </section>
 
-    <div class="footer">v4.3.3 • Jeux actifs uniquement sur l'appareil du brasseur + badge visuel</div>
+    <div class="footer">v4.3.4 • Jeux actifs sur l’appareil du joueur sélectionné (leader) + badge visuel</div>
   </main>
 </body>
 </html>
