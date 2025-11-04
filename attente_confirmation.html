@@ -1,5 +1,5 @@
-<!-- Version: v4.1 (2025-11-03) -->
-<!-- v4.1 mobile layout + fond transparent carte | JS complet -->
+<!-- Version: v4.2 (2025-11-04) -->
+<!-- Correction: enregistrement automatique du deviceId de l’hôte pour résoudre erreur d'affichage -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -47,6 +47,29 @@
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
 
+    // Correction : assure que l'hôte possède un deviceId enregistré
+    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+'_'+Math.random().toString(36).slice(2));
+    localStorage.setItem('deviceId', DEVICE_ID);
+
+    async function ensureAuth(){ try{await signInAnonymously(auth);}catch(e){} }
+
+    async function setHostDeviceId(){
+      try {
+        const ref = doc(db, 'soirees', CODE);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          const players = data.players || [];
+          if (players[0] && !players[0].deviceId) {
+            players[0].deviceId = DEVICE_ID;
+            await updateDoc(ref, { players });
+          }
+        }
+      } catch(e) {
+        console.warn('Erreur enregistrement deviceId hôte', e);
+      }
+    }
+
     function expectedCount(data){ const p=Array.isArray(data.players)?data.players:[]; return Number(data.playerCount||p.length)||p.length; }
     function confirmedCount(data){ const p=Array.isArray(data.players)?data.players:[]; return p.filter(x=>x && x.confirmed===true).length; }
 
@@ -64,8 +87,6 @@
       if(sel) sel.innerHTML=players.map((p,i)=>`<option>${esc(p?.name||`Joueur ${i+1}`)} — ${p?.confirmed?'Confirmé':'En attente'}</option>`).join('');
     }
 
-    async function ensureAuth(){ try{await signInAnonymously(auth);}catch(e){} }
-
     function setupQR(){
       $('sessionCode').textContent=CODE||'----';
       const link=`https://jads.ca/confirmation_joueurs.html?code=${encodeURIComponent(CODE)}`;
@@ -77,7 +98,7 @@
     async function maybeStartGame(data){ const exp=expectedCount(data), conf=confirmedCount(data); if(exp>0 && conf===exp){ if(String(data.status)!=='playing'){ try{await updateDoc(doc(db,'soirees',CODE),{status:'playing'});}catch{} } setTimeout(()=>{location.href=`selection_jeux.html?code=${CODE}`;},800); } }
 
     let unwatch=null;
-    async function init(){ if(!CODE){$('error').style.display='block';$('error').textContent='Code de soirée manquant dans l\'URL.';return;} await ensureAuth(); setupQR(); const ref=doc(db,'soirees',CODE); const first=await getDoc(ref); if(!first.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} renderList(first.data()); unwatch=onSnapshot(ref,(snap)=>{ if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} const data=snap.data(); renderList(data); if(String(data.status)==='playing'){ location.href=`selection_jeux.html?code=${CODE}`; return;} maybeStartGame(data); },(err)=>{ $('error').style.display='block'; $('error').textContent='Erreur: '+(err?.message||err); }); }
+    async function init(){ if(!CODE){$('error').style.display='block';$('error').textContent='Code de soirée manquant dans l\'URL.';return;} await ensureAuth(); await setHostDeviceId(); setupQR(); const ref=doc(db,'soirees',CODE); const first=await getDoc(ref); if(!first.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} renderList(first.data()); unwatch=onSnapshot(ref,(snap)=>{ if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return;} const data=snap.data(); renderList(data); if(String(data.status)==='playing'){ location.href=`selection_jeux.html?code=${CODE}`; return;} maybeStartGame(data); },(err)=>{ $('error').style.display='block'; $('error').textContent='Erreur: '+(err?.message||err); }); }
 
     window.addEventListener('DOMContentLoaded', init);
   </script>
