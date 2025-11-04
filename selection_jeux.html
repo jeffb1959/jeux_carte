@@ -1,5 +1,5 @@
-<!-- Version: v4.3.5 (2025-11-03) -->
-<!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
+<!-- Version: v4.4.0 (2025-11-04) -->
+<!-- v4.4.0 Redirection simultanée via soirees.currentGame + corrections JS & rendu joueurs -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22,7 +22,6 @@
     .row{display:grid;gap:10px}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .footer{color:var(--muted);text-align:center;font-size:.95rem}
-    /* Badge & style brasseur */
     .btn.leader{ background: rgba(239,68,68,0.20); border:1px solid rgba(239,68,68,0.45); }
     .badge{ display:inline-block; margin-left:10px; padding:4px 8px; border-radius:999px; font-size:.85rem; font-weight:700; background:#fecaca; color:#7f1d1d; vertical-align:middle }
   </style>
@@ -45,25 +44,38 @@
     const qs = (k)=>new URLSearchParams(location.search).get(k);
     const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
 
-    // Identifiant d'appareil (persisté localement)
     function getDeviceId(){
       let id = localStorage.getItem('deviceId') || localStorage.getItem('mgm_deviceId');
       if(!id){
-        if (window.crypto?.randomUUID){ id = crypto.randomUUID(); }
-        else { id = 'did_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+        id = (window.crypto?.randomUUID?.() ) || ('did_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8));
         localStorage.setItem('deviceId', id);
       }
       return id;
     }
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){} }
+    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){ console.warn('Auth anonyme échouée', e); } }
 
     let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+    let _renderedCount = -1;
 
     function disableGameButtons(disabled=true){ ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }}); }
     function setPlayersButtonsEnabled(enabled){
       const container = $('playersBtns'); if(!container) return;
       [...container.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled);
+    }
+
+    function renderPlayers(players){
+      const zone = $('playersBtns'); if(!zone) return;
+      zone.innerHTML = '';
+      (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.type = 'button';
+        btn.textContent = p?.name || `Joueur ${idx+1}`;
+        btn.dataset.playerIndex = String(idx);
+        btn.addEventListener('click', ()=> selectDealer(idx, p));
+        zone.appendChild(btn);
+      });
     }
 
     function renderLeaderDecor(data){
@@ -102,30 +114,17 @@
       if(!snap.exists()){ showError('Soirée introuvable.'); return; }
       const data = snap.data();
       const players = Array.isArray(data.players)? data.players : [];
-
-      $('titleCode').textContent = `#${code}`;
-      const zone = $('playersBtns');
-      zone.innerHTML = '';
-      players.sort((a,b)=> (a?.order??0) - (b?.order??0)).forEach((p, idx)=>{
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.type = 'button';
-        btn.textContent = p?.name || `Joueur ${idx+1}`;
-        btn.dataset.playerIndex = String(idx);
-        btn.addEventListener('click', ()=> selectDealer(idx, p));
-        zone.appendChild(btn);
-      });
-
+      const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
+      renderPlayers(players);
+      _renderedCount = players.length;
       applyLeaderState(data);
     }
 
     async function selectDealer(index, player){
-      // Désactive localement la sélection; l'activation des jeux sera gérée par l'écoute temps réel
       setPlayersButtonsEnabled(false);
       disableGameButtons(true);
       try{
         const soireeRef = doc(db,'soirees', code);
-        // RELIRE le document pour obtenir la version la plus à jour du deviceId du joueur sélectionné
         const snap = await getDoc(soireeRef);
         let leaderDid = null;
         if(snap.exists()){
@@ -133,13 +132,11 @@
           const arr = Array.isArray(d.players) ? d.players : [];
           const p = arr[index];
           leaderDid = p?.deviceId || null;
-          // Petit log d'aide
-          console.log('[selectDealer] selected index=', index, 'name=', p?.name || player?.name, 'leaderDeviceId=', leaderDid);
         }
         await updateDoc(soireeRef, {
           leaderIndex: index,
           leaderName: player?.name || null,
-          leaderDeviceId: leaderDid, // peut être null si l'appareil du joueur n'est pas encore lié
+          leaderDeviceId: leaderDid,
           leaderAt: serverTimestamp()
         });
       }catch(e){ console.warn('Erreur Firestore',e); }
@@ -164,10 +161,11 @@
         state: 'in_progress'
       });
 
+      await updateDoc(soireeRef, { currentGame: { type: gameType, gid: scoreRef.id, at: serverTimestamp() } });
+
       const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html'
                     : gameType === 'chialeux'     ? 'chialeux.html'
                     :                               'jeu_du_9.html';
-
       location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
     }
 
@@ -178,10 +176,10 @@
           leaderIndex: deleteField(),
           leaderName: null,
           leaderDeviceId: null,
-          leaderAt: deleteField()
+          leaderAt: deleteField(),
+          currentGame: deleteField()
         });
       }catch(e){ console.warn('resetDealer update failed', e); }
-      // L'écoute temps réel supprimera le badge et réinitialisera l'UI
     }
 
     function showError(msg){ const e=$('error'); if(!e) return; e.style.display='block'; e.textContent=msg; }
@@ -195,7 +193,25 @@
       onSnapshot(ref, (snap)=>{
         if(!snap.exists()) return;
         const d = snap.data();
+        const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
+
+        const arr = Array.isArray(d.players) ? d.players : [];
+        if(_renderedCount !== arr.length){
+          renderPlayers(arr);
+          _renderedCount = arr.length;
+        }
         applyLeaderState(d);
+
+        const cg = d.currentGame;
+        if(cg && cg.gid && cg.type){
+          const target = cg.type === 'dame_de_pique' ? 'dame_de_pique.html'
+                       : cg.type === 'chialeux'      ? 'chialeux.html'
+                       :                               'jeu_du_9.html';
+          const url = `${target}?code=${code}&gid=${cg.gid}`;
+          if(!location.href.includes(`gid=${cg.gid}`)){
+            location.href = url;
+          }
+        }
       });
 
       $('btnDP').addEventListener('click', ()=> startGameWithLeader('dame_de_pique'));
@@ -221,7 +237,7 @@
       <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
     </section>
 
-    <div class="footer">v4.3.5 • Jeux actifs sur l’appareil du joueur sélectionné (leader) + badge visuel • selectDealer lit deviceId depuis Firestore</div>
+    <div class="footer">v4.4.0 • Redirection simultanée via soirees.currentGame • Boutons jeux actifs uniquement sur l’appareil du brasseur • Rendu joueurs corrigé</div>
   </main>
 </body>
 </html>
