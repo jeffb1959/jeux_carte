@@ -1,9 +1,7 @@
-<!--
-  Page 3 — selection_jeux.html
-  Version: v1.0 (2025-10-30)
-  Auteur: Jean‑François + ChatGPT
-  Objet: Choix du type de jeu (mobile, style épuré). Transmet le code de soirée à la page du jeu.
--->
+<!-- Version: v4.3.1 (2025-11-03) -->
+<!-- v4.3.1 Fix: sanitizeCode regex + brackets; add lightweight tests (no behavior change) -->
+<!-- v4.3    Démarrage d'une partie: crée un doc de score par jeu avec leader + redirection avec gid -->
+<!-- v4.2    Sélection du premier brasseur + boutons joueurs + désactivation initiale des jeux -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -11,67 +9,191 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Sélection du jeu</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --danger:#ef4444; --ok:#22c55e; --line:#243252; }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220;color:var(--text)}
     .wrap{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:16px}
-    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid #243252;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    h1{margin:4px 0 0;font-size:1.8rem}
+    .card{background:color-mix(in srgb, var(--card) 92%, white 8%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    h1{margin:4px 0 8px;font-size:1.8rem}
     .muted{color:var(--muted)}
     .grid{display:grid;gap:12px}
-    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:64px;padding:18px;border-radius:16px;font-size:1.25rem;font-weight:800;color:#0c111b;background:var(--accent)}
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:64px;padding:18px;border-radius:16px;font-size:1.1rem;font-weight:800;color:#0c111b;background:var(--accent);transition:opacity .2s ease}
+    .btn[disabled]{opacity:.55;cursor:not-allowed}
+    .btn.green{background:var(--ok);color:#06210f}
+    .row{display:grid;gap:10px}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .footer{color:var(--muted);text-align:center;font-size:.95rem}
   </style>
   <script type="module">
-    // On reste prêt pour Firestore mais on ne l'utilise pas encore ici.
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
       authDomain: "soireecartev2.firebaseapp.com",
       projectId: "soireecartev2"
     };
-    initializeApp(firebaseConfig);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
     const $ = (id)=>document.getElementById(id);
     const qs = (k)=>new URLSearchParams(location.search).get(k);
+
+    // Fix: proper regex literal (no stray backslash/newline)
     const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
+
+    // --- Lightweight tests (no behavior change) ---
+    (function test_sanitizeCode(){
+      console.assert(sanitizeCode('1234')==='1234','T1 simple');
+      console.assert(sanitizeCode(' 12-34 ')==='1234','T2 remove non-digits');
+      console.assert(sanitizeCode('abcd')==='', 'T3 letters → empty');
+      console.assert(sanitizeCode('98765')==='9876','T4 truncate to 4');
+    })();
 
     let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
 
-    window.addEventListener('DOMContentLoaded', () => {
-      if(!code){
-        // Petit prompt pour récupérer le code si absent
-        const v = prompt('Entrez le code de la soirée (4 chiffres)')||'';
-        code = sanitizeCode(v);
-        if(code.length!==4){
-          alert('Code invalide. Retour index.');
-          location.href = 'index.html';
-          return;
-        }
-        localStorage.setItem('sc_code', code);
-      }
+    function disableGameButtons(disabled=true){
+      ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }});
+    }
+    function setPlayersButtonsEnabled(enabled){
+      const container = $('playersBtns');
+      if(!container) return;
+      [...container.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled);
+    }
+
+    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){} }
+
+    async function loadPlayers(){
+      const ref = doc(db,'soirees', code);
+      const snap = await getDoc(ref);
+      if(!snap.exists()){ showError('Soirée introuvable.'); return; }
+      const data = snap.data();
+      const players = Array.isArray(data.players)? data.players : [];
+
+      // Affiche le code titre
       $('titleCode').textContent = `#${code}`;
 
-      // Route les boutons en transmettant ?code=XXXX
-      $('btnDP').addEventListener('click', ()=> location.href = `dame_de_pique.html?code=${code}`);
-      $('btnCH').addEventListener('click', ()=> location.href = `chialeux.html?code=${code}`);
-      $('btnJ9').addEventListener('click', ()=> location.href = `jeu_du_9.html?code=${code}`);
+      // Construit les boutons joueurs
+      const zone = $('playersBtns');
+      zone.innerHTML = '';
+      players.sort((a,b)=> (a?.order??0) - (b?.order??0)).forEach((p, idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.type = 'button';
+        btn.textContent = p?.name || `Joueur ${idx+1}`;
+        btn.dataset.playerIndex = String(idx);
+        btn.addEventListener('click', ()=> selectDealer(idx, p));
+        zone.appendChild(btn);
+      });
+
+      // Au chargement : jeux inactifs, joueurs actifs
+      disableGameButtons(true);
+      setPlayersButtonsEnabled(true);
+    }
+
+    async function selectDealer(index, player){
+      // Désactive tous les boutons joueurs
+      setPlayersButtonsEnabled(false);
+      // Active les jeux pour ce choix local
+      disableGameButtons(false);
+
+      // Sauvegarde du brasseur dans Firestore (pour usage futur)
+      try{
+        const ref = doc(db,'soirees', code);
+        await updateDoc(ref, {
+          leaderIndex: index,
+          leaderName: player?.name || null,
+          leaderDeviceId: player?.deviceId || null,
+          leaderAt: serverTimestamp()
+        });
+      }catch(e){ /* affichage local seulement si besoin */ }
+    }
+
+    // Crée un document de score pour le jeu choisi en recopiant le leader
+    async function startGameWithLeader(gameType){
+      const soireeRef = doc(db,'soirees', code);
+      const snap = await getDoc(soireeRef);
+      if(!snap.exists()){ showError('Soirée introuvable'); return; }
+      const s = snap.data();
+
+      const colName = gameType === 'dame_de_pique' ? 'scores_dame_de_pique'
+                    : gameType === 'chialeux'     ? 'scores_chialeux'
+                    :                               'scores_jeu_du_9';
+
+      const scoreRef = await addDoc(collection(db, colName), {
+        code,
+        leaderDeviceId: s.leaderDeviceId || null,
+        leaderName: s.leaderName || null,
+        leaderIndex: (typeof s.leaderIndex === 'number') ? s.leaderIndex : null,
+        startedAt: serverTimestamp(),
+        state: 'in_progress'
+        // Optionnel: figer l'état initial des joueurs
+        // players: Array.isArray(s.players) ? s.players.map(p=>({name:p.name, deviceId:p.deviceId||null})) : []
+      });
+
+      const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html'
+                    : gameType === 'chialeux'     ? 'chialeux.html'
+                    :                               'jeu_du_9.html';
+
+      location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
+    }
+
+    function resetDealer(){
+      // Réactive les boutons joueurs et désactive la sélection des jeux
+      setPlayersButtonsEnabled(true);
+      disableGameButtons(true);
+    }
+
+    function showError(msg){ const e=$('error'); if(!e) return; e.style.display='block'; e.textContent=msg; }
+
+    window.addEventListener('DOMContentLoaded', async ()=>{
+      // Tests DOM légers (les boutons de jeux doivent être inactifs au départ)
+      setTimeout(()=>{
+        try{
+          console.assert($("btnDP").disabled===true && $("btnCH").disabled===true && $("btnJ9").disabled===true, 'T5 game buttons disabled on load');
+        }catch(_){/* no-op */}
+      }, 0);
+
+      if(!code){
+        const v = prompt('Entrez le code de la soirée (4 chiffres)')||'';
+        code = sanitizeCode(v);
+        if(code.length!==4){ alert('Code invalide. Retour index.'); location.href='index.html'; return; }
+        localStorage.setItem('sc_code', code);
+      }
+      await ensureAuth();
+      await loadPlayers();
+
+      // Routage des jeux (reste identique)
+      $('btnDP').addEventListener('click', ()=> startGameWithLeader('dame_de_pique'));
+      $('btnCH').addEventListener('click', ()=> startGameWithLeader('chialeux'));
+      $('btnJ9').addEventListener('click', ()=> startGameWithLeader('jeu_du_9'));
+
+      $('resetDealerBtn').addEventListener('click', resetDealer);
     });
   </script>
 </head>
 <body>
   <main class="wrap">
+    <!-- Sélection du brasseur -->
     <section class="card grid">
-      <h1>Sélectionner le type de jeu <span class="muted" id="titleCode"></span></h1>
-      <button id="btnDP" class="btn">Dame de pique</button>
-      <button id="btnCH" class="btn">Le chialeux</button>
-      <button id="btnJ9" class="btn">Jeu du 9</button>
+      <h1>Sélectionner le brasseur <span class="muted" id="titleCode"></span></h1>
+      <div id="playersBtns" class="row"></div>
+      <button id="resetDealerBtn" class="btn green" type="button">Changer de brasseur</button>
       <div id="error" class="err" role="alert"></div>
     </section>
-    <div class="footer">v1.0 • Choix du jeu • Code propagé</div>
+
+    <!-- Sélection du jeu (inactive tant que brasseur non choisi) -->
+    <section class="card grid">
+      <h1>Sélectionner le type de jeu</h1>
+      <button id="btnDP" class="btn" disabled>Dame de pique</button>
+      <button id="btnCH" class="btn" disabled>Le chialeux</button>
+      <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
+    </section>
+
+    <div class="footer">v4.3.1 • Choix du brasseur & jeux • Code propagé</div>
   </main>
 </body>
 </html>
