@@ -1,5 +1,8 @@
-<!-- Version: v4.3.7 (2025-11-04) -->
-<!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
+<!-- Version: v4.4 (2025-11-03) -->
+<!-- v4.4 Sandbox: fallback localStorage quand Firebase indisponible (démo/offline) -->
+<!-- v4.3.1 Fix: sanitizeCode regex + tests -->
+<!-- v4.3    Démarrage d'une partie: crée un doc de score par jeu avec leader + redirection avec gid -->
+<!-- v4.2    Sélection du premier brasseur + boutons joueurs + désactivation initiale des jeux -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22,252 +25,132 @@
     .row{display:grid;gap:10px}
     .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
     .footer{color:var(--muted);text-align:center;font-size:.95rem}
-    /* Badge & style brasseur */
-    .btn.leader{ background: rgba(239,68,68,0.20); border:1px solid rgba(239,68,68,0.45); }
-    .badge{ display:inline-block; margin-left:10px; padding:4px 8px; border-radius:999px; font-size:.85rem; font-weight:700; background:#fecaca; color:#7f1d1d; vertical-align:middle }
   </style>
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, onSnapshot, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    // --- Import Firebase dynamiquement; fallback SANDBOX si indisponible ---
+    let initializeApp, getAuth, signInAnonymously, getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc;
+    let app, auth, db;
+    let isSandbox = false;
+    try{
+      ({ initializeApp } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js'));
+      ({ getAuth, signInAnonymously } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js'));
+      ({ getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js'));
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-      authDomain: "soireecartev2.firebaseapp.com",
-      projectId: "soireecartev2"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+      const firebaseConfig = { apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg", authDomain: "soireecartev2.firebaseapp.com", projectId: "soireecartev2" };
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+    }catch(e){
+      console.warn('Sandbox activé: Firebase indisponible', e);
+      isSandbox = true;
+    }
 
     const $ = (id)=>document.getElementById(id);
     const qs = (k)=>new URLSearchParams(location.search).get(k);
     const sanitizeCode = (x)=> String(x||'').replace(/\D/g,'').slice(0,4);
 
-    // Identifiant d'appareil (persisté localement)
-    function getDeviceId(){
-      let id = localStorage.getItem('deviceId') || localStorage.getItem('mgm_deviceId');
-      if(!id){
-        if (window.crypto?.randomUUID){ id = crypto.randomUUID(); }
-        else { id = 'did_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
-        localStorage.setItem('deviceId', id);
-      }
-      return id;
-    }
-
-    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){ console.warn('Auth anonyme échouée', e); } }catch(e){} }
+    // tests légers
+    (function test_sanitizeCode(){
+      try{
+        console.assert(sanitizeCode('1234')==='1234','T1');
+        console.assert(sanitizeCode(' 12-34 ')==='1234','T2');
+        console.assert(sanitizeCode('abcd')==='', 'T3');
+        console.assert(sanitizeCode('98765')==='9876','T4');
+      }catch(_){/* no-op */}
+    })();
 
     let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
 
-    // Compteur de rendu pour éviter les états vides persistants
-    let _renderedCount = -1;
-
-    // Rendu des joueurs (utilitaire centralisé)
-    function renderPlayers(arr){
-      const zone = $('playersBtns');
-      if(!zone) return;
-      zone.innerHTML = '';
-      (arr||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.type = 'button';
-        btn.textContent = p?.name || `Joueur ${idx+1}`;
-        btn.dataset.playerIndex = String(idx);
-        btn.addEventListener('click', ()=> selectDealer(idx, p));
-        zone.appendChild(btn);
-      });
-    }
-
-    // Rendu des joueurs (utilitaire centralisé)
-    function renderPlayers(arr){
-      const zone = $('playersBtns');
-      if(!zone) return;
-      zone.innerHTML = '';
-      (arr||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.type = 'button';
-        btn.textContent = p?.name || `Joueur ${idx+1}`;
-        btn.dataset.playerIndex = String(idx);
-        btn.addEventListener('click', ()=> selectDealer(idx, p));
-        zone.appendChild(btn);
-      });
-    }
-
     function disableGameButtons(disabled=true){ ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }}); }
-    function setPlayersButtonsEnabled(enabled){
-      const container = $('playersBtns'); if(!container) return;
-      [...container.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled);
-    }
+    function setPlayersButtonsEnabled(enabled){ const c=$('playersBtns'); if(!c) return; [...c.querySelectorAll('button[data-player-index]')].forEach(b=> b.disabled = !enabled); }
 
-    function renderLeaderDecor(data){
-      const container = $('playersBtns'); if(!container) return;
-      const leaderIdx = (typeof data?.leaderIndex === 'number') ? data.leaderIndex : null;
-      [...container.querySelectorAll('button[data-player-index]')].forEach(b=>{
-        b.classList.remove('leader');
-        const old = b.querySelector('.badge'); if(old) old.remove();
-      });
-      if(leaderIdx!==null){
-        const btn = container.querySelector(`button[data-player-index="${leaderIdx}"]`);
-        if(btn){
-          btn.classList.add('leader');
-          const tag = document.createElement('span'); tag.className='badge'; tag.textContent='Brasseur';
-          btn.appendChild(tag);
-        }
-      }
-    }
+    async function ensureAuth(){ if(isSandbox) return; try{ await signInAnonymously(auth);}catch(e){ console.warn('Auth failed, sandbox on',e); isSandbox=true; } }
 
-    function applyLeaderState(data){
-      const hasLeader = (typeof data?.leaderIndex === 'number');
-      renderLeaderDecor(data);
-      if(hasLeader){
-        setPlayersButtonsEnabled(false);
-        const isLeaderHere = data?.leaderDeviceId && data.leaderDeviceId === getDeviceId();
-        disableGameButtons(!isLeaderHere);
-      }else{
-        setPlayersButtonsEnabled(true);
-        disableGameButtons(true);
-      }
-    }
+    // --- SANDBOX helpers ---
+    const SB_SOIREE = (code)=> `sandbox_soiree_${code}`;
+    const SB_SCORES = (gametype)=> `sandbox_scores_${gametype}`;
+    function sb_loadSoiree(code){ const raw = localStorage.getItem(SB_SOIREE(code)); return raw? JSON.parse(raw): null; }
+    function sb_saveSoiree(code,obj){ localStorage.setItem(SB_SOIREE(code), JSON.stringify(obj)); }
+    function sb_defaultSoiree(){ return { code, playerCount:4, players:[{name:'Joueur 1',confirmed:true},{name:'Joueur 2'},{name:'Joueur 3'},{name:'Joueur 4'}], status:'setup', createdAt: Date.now() }; }
 
     async function loadPlayers(){
-      const ref = doc(db,'soirees', code);
-      const snap = await getDoc(ref);
-      if(!snap.exists()){ showError('Soirée introuvable.'); return; }
-      const data = snap.data();
-      const players = Array.isArray(data.players)? data.players : [];
-      const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
-      renderPlayers(players);
-      applyLeaderState(data);
-    }
-      const data = snap.data();
-      const players = Array.isArray(data.players)? data.players : [];
-
       $('titleCode').textContent = `#${code}`;
-      const zone = $('playersBtns');
-      zone.innerHTML = '';
-      players.sort((a,b)=> (a?.order??0) - (b?.order??0)).forEach((p, idx)=>{
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.type = 'button';
-        btn.textContent = p?.name || `Joueur ${idx+1}`;
-        btn.dataset.playerIndex = String(idx);
-        btn.addEventListener('click', ()=> selectDealer(idx, p));
-        zone.appendChild(btn);
-      });
+      const zone = $('playersBtns'); zone.innerHTML='';
 
-      applyLeaderState(data);
+      if(isSandbox){
+        let s = sb_loadSoiree(code) || sb_defaultSoiree();
+        // si une liste sandbox spécifique existe, on l'utilise
+        const override = localStorage.getItem(`sandbox_players_${code}`);
+        if(override){ try{ const arr=JSON.parse(override); if(Array.isArray(arr)&&arr.length){ s.players = arr.map((n,i)=>({name:n, order:i, confirmed: !!(i===0)})); s.playerCount = s.players.length; } }catch(_){}} 
+        sb_saveSoiree(code,s);
+        // build buttons
+        s.players.slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,i)=>{
+          const btn=document.createElement('button'); btn.className='btn'; btn.type='button'; btn.textContent=p?.name||`Joueur ${i+1}`; btn.dataset.playerIndex=String(i); btn.addEventListener('click',()=> selectDealer(i,p)); zone.appendChild(btn);
+        });
+        disableGameButtons(true); setPlayersButtonsEnabled(true); return;
+      }
+
+      // Firestore
+      try{
+        const ref = doc(db,'soirees', code);
+        const snap = await getDoc(ref);
+        if(!snap.exists()){ showError('Soirée introuvable.'); return; }
+        const data = snap.data();
+        const players = Array.isArray(data.players)? data.players : [];
+        players.slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,i)=>{
+          const btn=document.createElement('button'); btn.className='btn'; btn.type='button'; btn.textContent=p?.name||`Joueur ${i+1}`; btn.dataset.playerIndex=String(i); btn.addEventListener('click',()=> selectDealer(i,p)); zone.appendChild(btn);
+        });
+        disableGameButtons(true); setPlayersButtonsEnabled(true);
+      }catch(e){ console.warn('Lecture Firestore échouée, sandbox on',e); isSandbox=true; return loadPlayers(); }
     }
 
     async function selectDealer(index, player){
-      // Désactive localement la sélection; l'activation des jeux sera gérée par l'écoute temps réel
-      setPlayersButtonsEnabled(false);
-      disableGameButtons(true);
+      setPlayersButtonsEnabled(false); disableGameButtons(false);
+
+      if(isSandbox){
+        const s = sb_loadSoiree(code) || sb_defaultSoiree();
+        s.leaderIndex = index; s.leaderName = player?.name||null; s.leaderDeviceId = player?.deviceId||null; s.leaderAt = Date.now();
+        sb_saveSoiree(code,s);
+        return;
+      }
       try{
-        const soireeRef = doc(db,'soirees', code);
-        // RELIRE le document pour obtenir la version la plus à jour du deviceId du joueur sélectionné
-        const snap = await getDoc(soireeRef);
-        let leaderDid = null;
-        if(snap.exists()){
-          const d = snap.data();
-          const arr = Array.isArray(d.players) ? d.players : [];
-          const p = arr[index];
-          leaderDid = p?.deviceId || null;
-          // Petit log d'aide
-          console.log('[selectDealer] selected index=', index, 'name=', p?.name || player?.name, 'leaderDeviceId=', leaderDid);
-        }
-        await updateDoc(soireeRef, {
-          leaderIndex: index,
-          leaderName: player?.name || null,
-          leaderDeviceId: leaderDid, // peut être null si l'appareil du joueur n'est pas encore lié
-          leaderAt: serverTimestamp()
-        });
-      }catch(e){ console.warn('Erreur Firestore',e); }
+        const ref = doc(db,'soirees', code);
+        await updateDoc(ref, { leaderIndex:index, leaderName: player?.name||null, leaderDeviceId: player?.deviceId||null, leaderAt: serverTimestamp() });
+      }catch(e){ console.warn('updateDoc échoué, sandbox on',e); isSandbox=true; selectDealer(index, player); }
     }
 
     async function startGameWithLeader(gameType){
-      const soireeRef = doc(db,'soirees', code);
-      const snap = await getDoc(soireeRef);
-      if(!snap.exists()){ showError('Soirée introuvable'); return; }
-      const s = snap.data();
+      const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html' : gameType === 'chialeux' ? 'chialeux.html' : 'jeu_du_9.html';
 
-      const colName = gameType === 'dame_de_pique' ? 'scores_dame_de_pique'
-                    : gameType === 'chialeux'     ? 'scores_chialeux'
-                    :                               'scores_jeu_du_9';
+      if(isSandbox){
+        const s = sb_loadSoiree(code) || sb_defaultSoiree();
+        const gid = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+        const key = SB_SCORES(gameType);
+        const arr = JSON.parse(localStorage.getItem(key) || '[]');
+        arr.push({ id: gid, code, leaderDeviceId: s.leaderDeviceId||null, leaderName: s.leaderName||null, leaderIndex: (typeof s.leaderIndex==='number'? s.leaderIndex:null), startedAt: Date.now(), state:'in_progress' });
+        localStorage.setItem(key, JSON.stringify(arr));
+        location.href = `${target}?code=${code}&gid=${gid}`; return;
+      }
 
-      const scoreRef = await addDoc(collection(db, colName), {
-        code,
-        leaderDeviceId: s.leaderDeviceId || null,
-        leaderName: s.leaderName || null,
-        leaderIndex: (typeof s.leaderIndex === 'number') ? s.leaderIndex : null,
-        startedAt: serverTimestamp(),
-        state: 'in_progress'
-      });
-
-      // Écrit le jeu courant pour déclencher la redirection simultanée sur tous les appareils
-      await updateDoc(soireeRef, {
-        currentGame: { type: gameType, gid: scoreRef.id, at: serverTimestamp() }
-      });
-
-      // Redirection immédiate locale (les autres appareils suivront via onSnapshot)
-      const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html'
-                    : gameType === 'chialeux'     ? 'chialeux.html'
-                    :                               'jeu_du_9.html';
-      location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
-    }
-
-    async function resetDealer(){(){
       try{
-        const ref = doc(db,'soirees', code);
-        await updateDoc(ref, {
-          leaderIndex: deleteField(),
-          leaderName: null,
-          leaderDeviceId: null,
-          leaderAt: deleteField()
-        });
-      }catch(e){ console.warn('resetDealer update failed', e); }
-      // L'écoute temps réel supprimera le badge et réinitialisera l'UI
+        const soireeRef = doc(db,'soirees', code);
+        const snap = await getDoc(soireeRef);
+        if(!snap.exists()){ showError('Soirée introuvable'); return; }
+        const s = snap.data();
+        const colName = gameType === 'dame_de_pique' ? 'scores_dame_de_pique' : gameType === 'chialeux' ? 'scores_chialeux' : 'scores_jeu_du_9';
+        const scoreRef = await addDoc(collection(db, colName), { code, leaderDeviceId: s.leaderDeviceId||null, leaderName: s.leaderName||null, leaderIndex: (typeof s.leaderIndex==='number')? s.leaderIndex : null, startedAt: serverTimestamp(), state:'in_progress' });
+        location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
+      }catch(e){ console.warn('Création score échouée, sandbox on',e); isSandbox=true; startGameWithLeader(gameType); }
     }
 
+    function resetDealer(){ setPlayersButtonsEnabled(true); disableGameButtons(true); if(isSandbox){ const s=sb_loadSoiree(code)||sb_defaultSoiree(); delete s.leaderIndex; delete s.leaderName; delete s.leaderDeviceId; delete s.leaderAt; sb_saveSoiree(code,s);} }
     function showError(msg){ const e=$('error'); if(!e) return; e.style.display='block'; e.textContent=msg; }
 
     window.addEventListener('DOMContentLoaded', async ()=>{
+      setTimeout(()=>{ try{ console.assert($("btnDP").disabled && $("btnCH").disabled && $("btnJ9").disabled, 'T5 game buttons disabled on load'); }catch(_){ } },0);
       if(!code){ const v = prompt('Entrez le code de la soirée (4 chiffres)')||''; code = sanitizeCode(v); if(code.length!==4){ alert('Code invalide. Retour index.'); location.href='index.html'; return; } localStorage.setItem('sc_code', code); }
       await ensureAuth();
       await loadPlayers();
-
-      const ref = doc(db,'soirees', code);
-      onSnapshot(ref, (snap)=>{
-        if(!snap.exists()) return;
-        const d = snap.data();
-        const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
-
-        const arr = Array.isArray(d.players) ? d.players : [];
-        // Rendre au premier snapshot ou si le nombre change
-        if(_renderedCount !== arr.length){
-          renderPlayers(arr);
-          _renderedCount = arr.length;
-        }
-        applyLeaderState(d);
-
-        // Redirection réactive pour tous les appareils si un jeu est en cours
-        const cg = d.currentGame;
-        if(cg && cg.gid && cg.type){
-          const target = cg.type === 'dame_de_pique' ? 'dame_de_pique.html'
-                       : cg.type === 'chialeux'      ? 'chialeux.html'
-                       :                               'jeu_du_9.html';
-          const url = `${target}?code=${code}&gid=${cg.gid}`;
-          if(!location.href.includes(`gid=${cg.gid}`)){
-            location.href = url;
-          }
-        }
-      });
-          }
-          const tc = $('titleCode'); if(tc) tc.textContent = `#${code}`;
-        }catch(_){}
-      });
-
       $('btnDP').addEventListener('click', ()=> startGameWithLeader('dame_de_pique'));
       $('btnCH').addEventListener('click', ()=> startGameWithLeader('chialeux'));
       $('btnJ9').addEventListener('click', ()=> startGameWithLeader('jeu_du_9'));
@@ -277,6 +160,7 @@
 </head>
 <body>
   <main class="wrap">
+    <!-- Sélection du brasseur -->
     <section class="card grid">
       <h1>Sélectionner le brasseur <span class="muted" id="titleCode"></span></h1>
       <div id="playersBtns" class="row"></div>
@@ -284,6 +168,7 @@
       <div id="error" class="err" role="alert"></div>
     </section>
 
+    <!-- Sélection du jeu (inactive tant que brasseur non choisi) -->
     <section class="card grid">
       <h1>Sélectionner le type de jeu</h1>
       <button id="btnDP" class="btn" disabled>Dame de pique</button>
@@ -291,7 +176,7 @@
       <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
     </section>
 
-    <div class="footer">v4.3.5 • Jeux actifs sur l’appareil du joueur sélectionné (leader) + badge visuel • selectDealer lit deviceId depuis Firestore</div>
+    <div class="footer">v4.4 • Choix du brasseur & jeux • Sandbox prêt</div>
   </main>
 </body>
 </html>
