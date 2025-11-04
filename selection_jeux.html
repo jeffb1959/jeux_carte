@@ -1,4 +1,4 @@
-<!-- Version: v4.3.5 (2025-11-03) -->
+<!-- Version: v4.3.7 (2025-11-04) -->
 <!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -56,9 +56,44 @@
       return id;
     }
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){} }
+    async function ensureAuth(){ try{ await signInAnonymously(auth);}catch(e){ console.warn('Auth anonyme échouée', e); } }catch(e){} }
 
     let code = sanitizeCode(qs('code') || localStorage.getItem('sc_code'));
+
+    // Compteur de rendu pour éviter les états vides persistants
+    let _renderedCount = -1;
+
+    // Rendu des joueurs (utilitaire centralisé)
+    function renderPlayers(arr){
+      const zone = $('playersBtns');
+      if(!zone) return;
+      zone.innerHTML = '';
+      (arr||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.type = 'button';
+        btn.textContent = p?.name || `Joueur ${idx+1}`;
+        btn.dataset.playerIndex = String(idx);
+        btn.addEventListener('click', ()=> selectDealer(idx, p));
+        zone.appendChild(btn);
+      });
+    }
+
+    // Rendu des joueurs (utilitaire centralisé)
+    function renderPlayers(arr){
+      const zone = $('playersBtns');
+      if(!zone) return;
+      zone.innerHTML = '';
+      (arr||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.type = 'button';
+        btn.textContent = p?.name || `Joueur ${idx+1}`;
+        btn.dataset.playerIndex = String(idx);
+        btn.addEventListener('click', ()=> selectDealer(idx, p));
+        zone.appendChild(btn);
+      });
+    }
 
     function disableGameButtons(disabled=true){ ['btnDP','btnCH','btnJ9'].forEach(id=>{ const b=$(id); if(b){ b.disabled = disabled; }}); }
     function setPlayersButtonsEnabled(enabled){
@@ -100,6 +135,12 @@
       const ref = doc(db,'soirees', code);
       const snap = await getDoc(ref);
       if(!snap.exists()){ showError('Soirée introuvable.'); return; }
+      const data = snap.data();
+      const players = Array.isArray(data.players)? data.players : [];
+      const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
+      renderPlayers(players);
+      applyLeaderState(data);
+    }
       const data = snap.data();
       const players = Array.isArray(data.players)? data.players : [];
 
@@ -164,14 +205,19 @@
         state: 'in_progress'
       });
 
+      // Écrit le jeu courant pour déclencher la redirection simultanée sur tous les appareils
+      await updateDoc(soireeRef, {
+        currentGame: { type: gameType, gid: scoreRef.id, at: serverTimestamp() }
+      });
+
+      // Redirection immédiate locale (les autres appareils suivront via onSnapshot)
       const target = gameType === 'dame_de_pique' ? 'dame_de_pique.html'
                     : gameType === 'chialeux'     ? 'chialeux.html'
                     :                               'jeu_du_9.html';
-
       location.href = `${target}?code=${code}&gid=${scoreRef.id}`;
     }
 
-    async function resetDealer(){
+    async function resetDealer(){(){
       try{
         const ref = doc(db,'soirees', code);
         await updateDoc(ref, {
@@ -195,7 +241,31 @@
       onSnapshot(ref, (snap)=>{
         if(!snap.exists()) return;
         const d = snap.data();
+        const tc=$('titleCode'); if(tc) tc.textContent = `#${code}`;
+
+        const arr = Array.isArray(d.players) ? d.players : [];
+        // Rendre au premier snapshot ou si le nombre change
+        if(_renderedCount !== arr.length){
+          renderPlayers(arr);
+          _renderedCount = arr.length;
+        }
         applyLeaderState(d);
+
+        // Redirection réactive pour tous les appareils si un jeu est en cours
+        const cg = d.currentGame;
+        if(cg && cg.gid && cg.type){
+          const target = cg.type === 'dame_de_pique' ? 'dame_de_pique.html'
+                       : cg.type === 'chialeux'      ? 'chialeux.html'
+                       :                               'jeu_du_9.html';
+          const url = `${target}?code=${code}&gid=${cg.gid}`;
+          if(!location.href.includes(`gid=${cg.gid}`)){
+            location.href = url;
+          }
+        }
+      });
+          }
+          const tc = $('titleCode'); if(tc) tc.textContent = `#${code}`;
+        }catch(_){}
       });
 
       $('btnDP').addEventListener('click', ()=> startGameWithLeader('dame_de_pique'));
