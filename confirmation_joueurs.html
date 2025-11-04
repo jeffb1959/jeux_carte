@@ -1,3 +1,4 @@
+<!-- Version: v4.0 (2025-11-03) -->
 <!-- v3.1 – 2025-11-02 – Harmonisation visuelle (fond sombre 35%, texte blanc pur) -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -131,7 +132,7 @@
         if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
         const data = snap.data();
         if(String(data.status)==='playing'){
-          window.location.href = `Selection_Jeux.html?code=${CODE}`;
+          window.location.href = `selection_jeux.html?code=${CODE}`;
           return;
         }
         const players = Array.isArray(data.players)? data.players : [];
