@@ -1,4 +1,4 @@
-<!-- Version: v4.3.4 (2025-11-03) -->
+<!-- Version: v4.3.5 (2025-11-03) -->
 <!-- v4.3.3 Jeux actifs uniquement sur l'appareil du brasseur + badge visuel -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -124,12 +124,22 @@
       setPlayersButtonsEnabled(false);
       disableGameButtons(true);
       try{
-        const ref = doc(db,'soirees', code);
-        await updateDoc(ref, {
+        const soireeRef = doc(db,'soirees', code);
+        // RELIRE le document pour obtenir la version la plus à jour du deviceId du joueur sélectionné
+        const snap = await getDoc(soireeRef);
+        let leaderDid = null;
+        if(snap.exists()){
+          const d = snap.data();
+          const arr = Array.isArray(d.players) ? d.players : [];
+          const p = arr[index];
+          leaderDid = p?.deviceId || null;
+          // Petit log d'aide
+          console.log('[selectDealer] selected index=', index, 'name=', p?.name || player?.name, 'leaderDeviceId=', leaderDid);
+        }
+        await updateDoc(soireeRef, {
           leaderIndex: index,
           leaderName: player?.name || null,
-          // IMPORTANT: activer les jeux sur l'appareil DU JOUEUR sélectionné (et non sur l'appareil qui clique)
-          leaderDeviceId: player?.deviceId || null,
+          leaderDeviceId: leaderDid, // peut être null si l'appareil du joueur n'est pas encore lié
           leaderAt: serverTimestamp()
         });
       }catch(e){ console.warn('Erreur Firestore',e); }
@@ -211,7 +221,7 @@
       <button id="btnJ9" class="btn" disabled>Jeu du 9</button>
     </section>
 
-    <div class="footer">v4.3.4 • Jeux actifs sur l’appareil du joueur sélectionné (leader) + badge visuel</div>
+    <div class="footer">v4.3.5 • Jeux actifs sur l’appareil du joueur sélectionné (leader) + badge visuel • selectDealer lit deviceId depuis Firestore</div>
   </main>
 </body>
 </html>
