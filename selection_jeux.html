@@ -202,6 +202,28 @@
         const d = snap.data();
         applyLeaderState(d);
 
+        // (Fix affichage) S'assure que la liste des joueurs est bien rendue
+        try{
+          const arr = Array.isArray(d.players) ? d.players.slice().sort((a,b)=>(a?.order??0)-(b?.order??0)) : [];
+          const zone = $('playersBtns');
+          if(zone){
+            const needRebuild = zone.childElementCount !== arr.length || zone.childElementCount === 0;
+            if(needRebuild){
+              zone.innerHTML = '';
+              arr.forEach((p, idx)=>{
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.type = 'button';
+                btn.textContent = p?.name || `Joueur ${idx+1}`;
+                btn.dataset.playerIndex = String(idx);
+                btn.addEventListener('click', ()=> selectDealer(idx, p));
+                zone.appendChild(btn);
+              });
+            }
+          }
+        }catch(_){}
+
+
         // Redirection réactive pour tous les appareils si un jeu est en cours
         const cg = d.currentGame;
         if(cg && cg.gid && cg.type){
