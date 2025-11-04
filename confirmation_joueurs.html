@@ -1,159 +1,107 @@
-<!-- Version: v4.0 (2025-11-03) -->
-<!-- v3.1 – 2025-11-02 – Harmonisation visuelle (fond sombre 35%, texte blanc pur) -->
+<!-- Version: v4.3 (2025-11-04) -->
+<!-- Correction: ajout enregistrement du deviceId au moment de la confirmation -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
-  <title>Soirée de carte – Confirmation</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirmation du joueur</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#ffffff; --muted:#dfe3ec; --accent:#4fd1c5; --danger:#ef4444; --line:#243252; }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed;color:var(--text);font-size:1.05rem}
-    .wrap{max-width:680px;margin:0 auto;padding:18px;display:grid;gap:16px}
-    .card{background:rgba(0,0,0,0.35);border:1px solid #3a4a6a;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);color:#ffffff;font-size:1.1rem}
-    h1{margin:4px 0 0;font-size:1.8rem;color:#ffffff}
-    .muted{color:#ffffff}
-    .btn{appearance:none;border:none;cursor:pointer;padding:10px 14px;border-radius:12px;font-weight:700;background:var(--accent);color:#0c111b;font-size:1.05rem}
-    .btn.small{padding:8px 12px}
-    .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-    ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-    li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px dashed #3a4a6a;border-radius:12px;color:#ffffff}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,0.1);color:#ffffff}
-    .ok{color:#22c55e}
-    .warn{color:#f59e0b}
-    .err{background:#2b0e12;border:1px solid #6b1f28;padding:10px;border-radius:12px;color:#ffd6db;display:none}
-    .footer{color:#ffffff;text-align:center;font-size:.95rem;margin-top:8px}
+    :root { --bg:#0b1220; --text:#ffffff; --muted:#cfd8e3; --line:#243252; --accent:#60a5fa; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: system-ui, Segoe UI, Roboto, Arial; background:#0b1220 url('https://jads.ca/image/fond_jeep.webp') center/cover no-repeat fixed; color: var(--text); }
+    .wrap { display:grid; place-items:center; height:100vh; text-align:center; }
+    .card { background: rgba(17,26,46,0.35); border: 1px solid var(--line); border-radius:18px; box-shadow:0 12px 28px rgba(0,0,0,.35); backdrop-filter:blur(4px); padding:20px; width:min(360px,90vw); }
+    h1 { font-size:1.8rem; margin-bottom:1rem; }
+    select { width:100%; padding:10px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,0.08); color:var(--text); font-size:1rem; margin-bottom:16px; }
+    .btn { appearance:none; border:none; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer; background:var(--accent); color:#031023; width:100%; }
+    .err { margin-top:10px; background:#2b0e12; border:1px solid #6b1f28; padding:10px; border-radius:12px; color:#ffd6db; display:none; }
   </style>
-
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+    import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
     const firebaseConfig = {
-      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-      authDomain: "soireecartev2.firebaseapp.com",
-      projectId: "soireecartev2",
-      storageBucket: "soireecartev2.firebasestorage.app",
-      messagingSenderId: "784781686361",
-      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+      apiKey: 'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg',
+      authDomain: 'soireecartev2.firebaseapp.com',
+      projectId: 'soireecartev2',
+      storageBucket: 'soireecartev2.firebasestorage.app',
+      messagingSenderId: '784781686361',
+      appId: '1:784781686361:web:033693cb22fb1a55af2348'
     };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db  = getFirestore(app);
+    const db = getFirestore(app);
 
-    const qs   = new URLSearchParams(location.search);
-    const CODE = (qs.get('code') || localStorage.getItem('sc_code') || '').replace(/\D/g,'').slice(0,4);
-    if(!CODE){ alert('Code de soirée manquant'); }
+    const $ = (id)=>document.getElementById(id);
+    const qs = new URLSearchParams(location.search);
+    const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
 
-    const $  = (id)=>document.getElementById(id);
-    const esc = (s)=>String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Crée ou récupère un deviceId unique pour cet appareil
+    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+'_'+Math.random().toString(36).slice(2));
+    localStorage.setItem('deviceId', DEVICE_ID);
 
-    function getDeviceId(){
-      const key = 'sc_deviceId';
-      let id = localStorage.getItem(key);
-      if(!id){
-        id = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16));
-        localStorage.setItem(key,id);
-      }
-      return id;
-    }
-    const DEVICE_ID = getDeviceId();
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.error(e); } }
 
-    function allConfirmed(data){
-      const players = Array.isArray(data.players)? data.players: [];
-      const expected = Number(data.playerCount||players.length)||players.length;
-      if(players.length < expected) return false;
-      return expected>0 && players.filter(p=>p && p.confirmed===true).length === expected;
-    }
-
-    function render(players){
-      const list = $('players');
-      list.innerHTML = '';
-      const myIdx = players.findIndex(p=> p && p.deviceId === DEVICE_ID);
-      players.slice().sort((a,b)=>(a.order??0)-(b.order??0)).forEach((p,i)=>{
-        const li = document.createElement('li');
-        const name = esc(p.name || `Joueur ${i+1}`);
-        const isMine  = p.deviceId === DEVICE_ID;
-        const claimed = !!p.deviceId;
-        const right = p.confirmed
-          ? `<span class="pill ok">Confirmé ✓${isMine?' (mon appareil)':''}</span>`
-          : (isMine
-              ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
-              : (!claimed && (myIdx === -1)
-                  ? `<button class="btn small" data-idx="${i}" data-act="confirm">C’est moi</button>`
-                  : `<span class="pill">Réservé</span>`));
-        li.innerHTML = `<span>${name}</span><span>${right}</span>`;
-        list.appendChild(li);
-      });
-      list.querySelectorAll('button[data-act="confirm"]').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{
-          const idx = Number(btn.getAttribute('data-idx'));
-          await confirmIndex(idx);
-        });
-      });
-    }
-
-    async function confirmIndex(idx){
-      const ref = doc(db,'soirees', CODE);
+    async function loadPlayers(){
+      if(!CODE){ $('error').style.display='block'; $('error').textContent='Code de soirée manquant'; return; }
+      await ensureAuth();
+      const ref = doc(db, 'soirees', CODE);
       const snap = await getDoc(ref);
-      if(!snap.exists()) throw new Error('Soirée introuvable');
+      if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable'; return; }
       const data = snap.data();
-      const players = Array.isArray(data.players)? data.players.slice():[];
+      const players = data.players || [];
+      const select = $('playerSelect');
+      select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>' + players.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+    }
 
-      const myIdx = players.findIndex(p => p && p.deviceId === DEVICE_ID);
-      if(myIdx !== -1 && myIdx !== idx){ $('error').style.display='block'; $('error').textContent = 'Cet appareil est déjà associé à un autre joueur.'; return; }
-      if(players[idx]?.deviceId && players[idx].deviceId !== DEVICE_ID){ $('error').style.display='block'; $('error').textContent = 'Ce nom est déjà confirmé ailleurs.'; return; }
+    async function confirmPlayer(){
+      const select = $('playerSelect');
+      const idx = select.value;
+      if(idx===''){ $('error').style.display='block'; $('error').textContent='Veuillez sélectionner votre nom.'; return; }
+      const ref = doc(db, 'soirees', CODE);
+      const snap = await getDoc(ref);
+      if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
+      const data = snap.data();
+      const players = data.players || [];
+      const player = players[idx];
 
-      try{ await signInAnonymously(auth); }catch{}
-      const uid = auth.currentUser?.uid || null;
+      // Vérifie si un autre joueur utilise déjà cet appareil
+      const alreadyLinked = players.find(p=>p.deviceId===DEVICE_ID && p.name!==player.name);
+      if(alreadyLinked){ $('error').style.display='block'; $('error').textContent='Cet appareil est déjà associé à un autre joueur.'; return; }
 
-      players[idx] = { ...players[idx], deviceId: DEVICE_ID, uid, confirmed: true };
-      await updateDoc(ref, { players });
-      $('error').style.display='none';
+      // Enregistre le deviceId et confirme le joueur
+      player.deviceId = DEVICE_ID;
+      player.confirmed = true;
+      players[idx] = player;
 
-      const afterSnap = await getDoc(ref);
-      const afterData = afterSnap.data();
-      if(allConfirmed(afterData) && String(afterData.status) !== 'playing'){
-        await updateDoc(ref, { status: 'playing' });
+      try {
+        await updateDoc(ref, { players });
+        alert(`Confirmation enregistrée pour ${player.name}`);
+        location.href = `attente_confirmation.html?code=${CODE}`;
+      } catch(e){
+        console.error(e);
+        $('error').style.display='block';
+        $('error').textContent='Erreur de confirmation.';
       }
     }
 
-    let unwatch = null;
-    async function start(){
-      $('code').textContent = CODE;
-      try{ await signInAnonymously(auth); }catch{}
-      if(unwatch) unwatch();
-      const ref = doc(db,'soirees', CODE);
-      unwatch = onSnapshot(ref, (snap)=>{
-        if(!snap.exists()){ $('error').style.display='block'; $('error').textContent='Soirée introuvable.'; return; }
-        const data = snap.data();
-        if(String(data.status)==='playing'){
-          window.location.href = `selection_jeux.html?code=${CODE}`;
-          return;
-        }
-        const players = Array.isArray(data.players)? data.players : [];
-        render(players);
-      }, (err)=>{
-        $('error').style.display='block'; $('error').textContent = 'Erreur: '+(err?.message||err);
-      });
-    }
-
-    window.addEventListener('DOMContentLoaded', start);
+    window.addEventListener('DOMContentLoaded', ()=>{
+      loadPlayers();
+      $('confirmBtn').addEventListener('click', confirmPlayer);
+    });
   </script>
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <h1>Confirmer ma présence – Code <span class="pill" id="code">----</span></h1>
-      <p class="muted">Clique sur ton nom pour te confirmer. Un appareil ne peut confirmer <b>qu’un</b> joueur.</p>
-      <ul id="players"></ul>
+  <div class="wrap">
+    <div class="card">
+      <h1>Confirmation du joueur</h1>
+      <select id="playerSelect"></select>
+      <button id="confirmBtn" class="btn">Confirmer ma présence</button>
       <div id="error" class="err" role="alert"></div>
-    </section>
-    <div class="footer">v3.1 • Fond sombre 35% • Texte blanc pur • Style harmonisé</div>
-  </main>
+    </div>
+  </div>
 </body>
 </html>
