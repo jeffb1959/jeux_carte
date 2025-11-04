@@ -149,43 +149,91 @@ service cloud.firestore {
         const gid = ref.id;
         location.href = `dame_de_pique.html?code=${CODE||'0000'}&gid=${gid}`;
       }catch(e){
-        // Permission error → activer sandbox local pour permettre l'exploration
         console.warn('createTestGame permission issue', e);
         showPermsHelp(e);
         enableSandboxBanner();
         const gid = 'local-'+Date.now().toString(36);
-        // Marquer la session sandbox dans le storage local
         const key = `sandbox_dp_${gid}`;
         localStorage.setItem(key, JSON.stringify({ round:1, totals:[], currentInputs:{}, confirmedInputs:{}, test:true }));
         location.href = `dame_de_pique.html?code=${CODE||'0000'}&gid=${gid}&mode=sandbox`;
       }
     }
 
-    // Diagnostics légers ("tests" intégrés)
+    // --- Ajouts pour rétablir la connexion temps réel ---
+    const swapCycle = ['À droite','À gauche','Au centre','Garde tes cartes'];
+
+    function renderTotals(totals=[], players=[]) {
+      const box = $('#totalsList'); if(!box) return;
+      box.innerHTML = '';
+      players.forEach((p,i)=>{
+        const line = document.createElement('div');
+        line.className = 'line';
+        line.innerHTML = `<div class=\"name\">${p?.name||('Joueur '+(i+1))}</div><div class=\"pts\">${Number(totals[i]||0)}</div>`;
+        box.appendChild(line);
+      });
+    }
+    function dealerIndexFor(round, leaderIndex, n){
+      if(typeof leaderIndex!=='number'||leaderIndex<0||!n) return 0;
+      return (leaderIndex + (round-1)) % n;
+    }
+    function renderDealer(round, leaderIndex, players){
+      const idx = dealerIndexFor(round, leaderIndex, players.length);
+      const dealer = players[idx];
+      const nameNode = $('#dealerName'); if(nameNode) nameNode.textContent = dealer?.name || '—';
+      const swapNode = $('#swapInfo'); if(swapNode) swapNode.textContent = swapCycle[(round-1)%4];
+      const isDealerHere = dealer?.deviceId && dealer.deviceId === DEVICE_ID;
+      document.body.classList.toggle('dealer', !!isDealerHere);
+    }
+
+    // Diagnostics légers
     function runSelfTests(){
-      console.groupCollapsed('[DP v4.7] Self-tests');
-      console.assert(typeof CODE === 'string', 'CODE doit être une string');
-      console.assert(DEVICE_ID && DEVICE_ID.length>0, 'DEVICE_ID doit exister');
-      console.assert(document.querySelector('.wrap')!=null, 'Container présent');
-      console.groupEnd();
+      try{
+        console.groupCollapsed('[DP v4.7.1] Self-tests');
+        console.assert(typeof CODE === 'string', 'CODE doit être une string');
+        console.assert(DEVICE_ID && DEVICE_ID.length>0, 'DEVICE_ID doit exister');
+        console.assert(document.querySelector('.wrap')!=null, 'Container présent');
+        console.groupEnd();
+      }catch(_){/* no-op */}
     }
 
     window.addEventListener('DOMContentLoaded', async ()=>{
       runSelfTests();
+
+      const codeNode = $('#code'); if(codeNode) codeNode.textContent = CODE || '----';
+
       if(!GID){
         // Pas de gid → proposer la création de test
         $('#testBanner').style.display='block';
         $('#testSection').style.display='block';
         $('#btnCreateTest').addEventListener('click', createTestGame);
+        return; // rien d'autre à faire sans GID
       }
 
-      // Afficher code de soirée si présent
-      const codeNode = $('#code'); if(codeNode) codeNode.textContent = CODE || '----';
+      await ensureAuth();
 
-      // Détection explicite du mode sandbox via l'URL
-      if(qs.get('mode')==='sandbox'){
-        enableSandboxBanner();
-      }
+      const soireeRef = doc(db,'soirees', CODE);
+      const gameRef   = doc(db,'scores_dame_de_pique', GID);
+
+      let players = [];
+
+      // Abonnement à la soirée : noms + deviceId + leaderIndex
+      onSnapshot(soireeRef, (snap)=>{
+        if(!snap.exists()) return;
+        const s = snap.data();
+        players = (Array.isArray(s.players)? s.players: []).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+        const round = Number($('#round')?.textContent||'1') || 1;
+        renderDealer(round, s.leaderIndex, players);
+      }, (err)=>{ showPermsHelp(err); });
+
+      // Abonnement au document de jeu : round + totaux
+      onSnapshot(gameRef, (snap)=>{
+        if(!snap.exists()) return;
+        const g = snap.data();
+        const round = Number(g.round||1);
+        const roundNode = $('#round'); if(roundNode) roundNode.textContent = round;
+        renderDealer(round, (g.leaderIndex ?? undefined), players);
+        renderTotals(g.totals||[], players);
+      }, (err)=>{ showPermsHelp(err); });
     });
   </script>
 </body>
