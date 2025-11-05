@@ -1,4 +1,4 @@
-<!-- Version: v4.9.2 (2025-11-05) -->
+<!-- Version: v4.9.3 (2025-11-05) -->
 <!-- Dame de Pique — Version stable de base avant ajustements -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -203,7 +203,8 @@ let gameRef = null; // ref vers scores_dame_de_pique/{gid}
   );
     }
 
-    window.addEventListener('DOMContentLoaded', ()=>{
+    window.addEventListener('DOMContentLoaded', () => {
+      // S'assure que la section existe avant tout rendu asynchrone
       ensureTotalsList();
       init();
     });
