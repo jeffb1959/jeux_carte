@@ -1,4 +1,4 @@
-<!-- Version: v4.9.5 (2025-11-05) -->
+<!-- Version: v4.9.6 (2025-11-05) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -20,7 +20,7 @@
 </head>
 <body>
   <h1>Dame De Pique</h1>
-  <div>Brasseur : <span id="dealerName">—</span></div>
+  <div>Brasseur : <span id="dealerName">—</span></div>
   <div class="card">
     <div>Saisissez votre score</div>
     <button id="btnOpen" class="btn">Inscrire le pointage</button>
@@ -28,7 +28,7 @@
   <div class="card">
     <div>Scores totaux</div>
     <div id="totalsList" class="grid"></div>
-    <div>Soirée #<span id="code">----</span></div>
+    <div>Soirée #<span id="code">----</span></div>
   </div>
   <a href="selection_jeux.html" style="color:#9bb3d1">← Retour</a>
 
@@ -114,6 +114,29 @@
     }
 
     window.addEventListener('DOMContentLoaded',()=>{init();});
-  </script>
+  // == Hotfix v4.9.6: re-render totals on both snapshots ==
+try {
+  if (typeof window.__dpHotfixApplied === 'undefined') {
+    window.__dpHotfixApplied = true;
+    let __players = [];
+    let __lastTotals = [];
+    const safeRender = ()=>{ try { if (typeof renderTotals==='function') renderTotals(__players, __lastTotals); } catch(e){ console.warn('[hotfix render]', e); } };
+    // réécoutes légères (ne cassent pas les écoutes existantes)
+    onSnapshot(doc(db,'soirees',CODE), s=>{
+      if(!s.exists()) return;
+      const d = s.data();
+      __players = (d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      safeRender();
+    });
+    onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
+      if(!s.exists()) return;
+      const g = s.data();
+      __lastTotals = g.totals||[];
+      if (typeof setText==='function') setText('round', String(g.round||1));
+      safeRender();
+    });
+  }
+} catch(e){ console.warn('[hotfix wires] failed', e); }
+</script>
 </body>
 </html>
