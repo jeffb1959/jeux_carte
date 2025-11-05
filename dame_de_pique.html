@@ -1,5 +1,5 @@
-<!-- Version: v4.8 (2025-11-04) -->
-<!-- Dame de Pique — Ajout du rendu global et de la tolérance DOM (totalsList auto-créé, renderTotals exposé globalement) -->
+<!-- Version: v4.8.1 (2025-11-04) -->
+<!-- Dame de Pique — Hardening DOM: garde-fous NULL, création #totalsList robuste avant rendus, renderTotals global -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -76,21 +76,25 @@
     const GID  = qs.get('gid');
 
     const $ = (id)=>document.getElementById(id);
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
-    // Crée le conteneur s’il n’existe pas
-    if(!$('#totalsList')){
+    function ensureTotalsList(){
+      let box = $('#totalsList');
+      if(box) return box;
       const wrap = document.querySelector('.wrap');
+      if(!wrap){ console.warn('[ensureTotalsList] .wrap introuvable'); return null; }
       const sect = document.createElement('section');
       sect.className = 'card grid';
       sect.id = 'totalsCard';
       sect.innerHTML = '<div class="lbl">Scores totaux</div><div id="totalsList" class="grid"></div><div class="lbl">Soirée #<span id="code">----</span></div>';
       wrap.appendChild(sect);
+      return $('#totalsList');
     }
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
     function renderTotals(players, totals){
-      const box = $('#totalsList');
+      const box = ensureTotalsList();
       if(!box){ console.warn('[renderTotals] #totalsList introuvable'); return; }
       box.innerHTML='';
       const arr=(players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
@@ -105,15 +109,16 @@
 
     async function init(){
       await ensureAuth();
-      const codeNode=$('#code'); if(codeNode) codeNode.textContent=CODE||'----';
+      setText('code', CODE||'----');
 
       let players=[];
+
       onSnapshot(doc(db,'soirees',CODE), s=>{
         if(!s.exists()) return;
         const d=s.data();
         players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        $('#dealerName').textContent=d.leaderName||'—';
-        $('#swapInfo').textContent=(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—';
+        setText('dealerName', d.leaderName || '—');
+        setText('swapInfo', (d.currentGame?.type==='dame_de_pique') ? 'Échange actif' : '—');
       });
 
       onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
@@ -121,11 +126,16 @@
         const g=s.data();
         window.currentRound=g.round||1;
         window.lastTotals=g.totals||[];
+        setText('round', String(window.currentRound));
         renderTotals(players, window.lastTotals);
       });
     }
 
-    window.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('DOMContentLoaded', ()=>{
+      // S'assure que la section existe avant tout rendu asynchrone
+      ensureTotalsList();
+      init();
+    });
   </script>
 </body>
 </html>
