@@ -209,5 +209,38 @@ let gameRef = null; // ref vers scores_dame_de_pique/{gid}
       init();
     });
   </script>
+  
+  <!-- HOTFIX v4.9.4: ré-attache les listeners et sécurise renderTotals sans changer la structure existante -->
+  <script type="module" id="hotfix-v494">
+    if(!window.__dp_hotfix_applied){
+      window.__dp_hotfix_applied = true;
+      const $ = (id)=>document.getElementById(id);
+      const setText = (id, t)=>{ const el=$(id); if(el) el.textContent = t; };
+      function ensureTotalsList(){
+        let box = $('#totalsList');
+        if(box) return box;
+        const wrap = document.querySelector('.wrap');
+        if(!wrap) return null;
+        const sect = document.createElement('section');
+        sect.className='card grid';
+        sect.id='totalsCard';
+        sect.innerHTML = '<div class="lbl">Scores totaux<\/div><div id="totalsList" class="grid"><\/div><div class="lbl">Soirée #<span id="code">----<\/span><\/div>';
+        wrap.appendChild(sect);
+        return $('#totalsList');
+      }
+      window.renderTotals = function(players, totals){
+        const box = ensureTotalsList();
+        if(!box) { console.warn('[hotfix] #totalsList introuvable'); return; }
+        box.innerHTML='';
+        (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,i)=>{
+          const line = document.createElement('div');
+          line.className='line';
+          line.innerHTML = `<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
+          box.appendChild(line);
+        });
+      };
+      document.addEventListener('DOMContentLoaded', ()=>{ setText('code', (new URLSearchParams(location.search).get('code')||'').toString()); });
+    }
+  </script>
 </body>
 </html>
