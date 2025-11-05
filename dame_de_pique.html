@@ -1,4 +1,5 @@
-<!-- Version: v4.7.2 (2025-11-04) -->
+<!-- Version: v4.7.3 (2025-11-04) -->
+<!-- Dame de Pique — Hardening: null-safe DOM writes, expose debug vars early, clearer logs -->
 <!-- Dame de Pique — Connexion temps réel fix: abonnements soirees/{code} + scores_dame_de_pique/{gid}, rendu dealer/round/totaux -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -91,6 +92,9 @@
     localStorage.setItem('deviceId', DEVICE_ID);
 
     const $ = (id)=>document.getElementById(id);
+// Expose debug vars early to avoid undefined reads
+window.currentRound = 1;
+window.lastTotals = [];
     const swapCycle = ['À droite','À gauche','Au centre','Garde tes cartes'];
 
     function dealerIndexFor(round, leaderIndex, n){
@@ -120,44 +124,41 @@
     }
 
     async function init(){
-      $('#code').textContent = CODE || '----';
-      if(!CODE || !GID){
-        showPerm('Paramètres manquants (code/gid).');
-        return;
-      }
+      // Fill code placeholder if present
+      const codeNode = $('#code'); if(codeNode) codeNode.textContent = CODE || '----';
+      if(!CODE || !GID){ showPerm('Paramètres manquants (code/gid).'); return; }
       await ensureAuth();
 
-      // Abonnement aux joueurs/leader (soirees/{code})
+      // Refs
       const soireeRef = doc(db,'soirees', CODE);
+      const gameRef   = doc(db,'scores_dame_de_pique', GID);
+
       let playersCache = [];
+
+      // Subscribe to soiree (players/leader)
       onSnapshot(soireeRef, (snap)=>{
         if(!snap.exists()) return;
         const s = snap.data();
         const players = Array.isArray(s.players)? s.players.slice().sort((a,b)=>(a?.order??0)-(b?.order??0)) : [];
         playersCache = players;
-        const round = Number(currentRound)||1; // currentRound mis à jour par l'autre snapshot
+        const round = Number(window.currentRound)||1;
         const idx = dealerIndexFor(round, s.leaderIndex, players.length);
         const dealer = players[idx];
-        $('#dealerName').textContent = dealer?.name || '—';
-        $('#swapInfo').textContent = swapCycle[(round-1)%4];
+        const dn = $('#dealerName'); if(dn) dn.textContent = dealer?.name || '—';
+        const sw = $('#swapInfo');   if(sw) sw.textContent = ['À droite','À gauche','Au centre','Garde tes cartes'][(round-1)%4];
         const isDealerDevice = dealer?.deviceId && dealer.deviceId === DEVICE_ID;
         document.body.classList.toggle('dealer', !!isDealerDevice);
-        // rafraîchir les totaux à structure constante
-        renderTotals(playersCache, lastTotals);
+        renderTotals(playersCache, window.lastTotals);
       }, (err)=> showPerm(err));
 
-      // Abonnement à l'état du jeu (scores_dame_de_pique/{gid})
-      const gameRef = doc(db,'scores_dame_de_pique', GID);
-      window.lastTotals = []; // debug global léger
-      window.currentRound = 1;
+      // Subscribe to game (round/totals)
       onSnapshot(gameRef, (snap)=>{
         if(!snap.exists()) return;
         const g = snap.data();
-        const round = Number(g.round||1); window.currentRound = round;
-        $('#round').textContent = round;
-        const totals = Array.isArray(g.totals)? g.totals : [];
-        window.lastTotals = totals;
-        renderTotals(playersCache, totals);
+        window.currentRound = Number(g.round||1);
+        const rn = $('#round'); if(rn) rn.textContent = window.currentRound;
+        window.lastTotals = Array.isArray(g.totals)? g.totals : [];
+        renderTotals(playersCache, window.lastTotals);
       }, (err)=> showPerm(err));
     }
 
