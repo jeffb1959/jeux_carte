@@ -1,4 +1,4 @@
-<!-- Version: v4.9.1 (2025-11-05) -->
+<!-- Version: v4.9.2 (2025-11-05) -->
 <!-- Dame de Pique — Version stable de base avant ajustements -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -200,27 +200,7 @@ let gameRef = null; // ref vers scores_dame_de_pique/{gid}
           }
         });
       }
-    }
-
-
-      onSnapshot(doc(db,'soirees',CODE), s=>{
-        if(!s.exists()) return;
-        const d=s.data();
-        players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        setText('dealerName', d.leaderName || '—');
-        setText('swapInfo', (d.currentGame?.type==='dame_de_pique') ? 'Échange actif' : '—');
-        const isDealerDevice = d?.leaderDeviceId && d.leaderDeviceId === DEVICE_ID;
-        document.body.classList.toggle('dealer', !!isDealerDevice);
-      });
-
-      onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
-        if(!s.exists()) return;
-        const g=s.data();
-        window.currentRound=g.round||1;
-        window.lastTotals=g.totals||[];
-        setText('round', String(window.currentRound));
-        renderTotals(players, window.lastTotals);
-      });
+  );
     }
 
     window.addEventListener('DOMContentLoaded', ()=>{
