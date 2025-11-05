@@ -1,5 +1,5 @@
-<!-- Version: v4.8.3 (2025-11-04) -->
-<!-- Dame de Pique — Hardening DOM: garde-fous NULL, création #totalsList robuste avant rendus, renderTotals global -->
+<!-- Version: v4.8 (2025-11-04) -->
+<!-- Dame de Pique — Validation de tour (25), grand chelem, rendu totaux, modale interactive -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -16,28 +16,37 @@
     .titleRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%}
     h1{margin:0;font-size:clamp(22px,5vw,28px)}
     .lbl{color:var(--muted);font-size:clamp(15px,4vw,18px)}
+
     .brasseur{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px}
     .brName{font-size:clamp(18px,5vw,22px);font-weight:700;color:var(--accent)}
     .swap{font-size:clamp(14px,4vw,16px);color:var(--muted)}
+
     .card{width:100%;background:color-mix(in srgb, var(--card) 90%, white 10%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
     .grid{display:grid;gap:12px}
+
     .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:52px;padding:0 16px;border-radius:16px;font-size:clamp(17px,4vw,19px);font-weight:800;color:#0c111b;background:var(--accent)}
+    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
     .btn[disabled]{opacity:.6;filter:grayscale(.3);cursor:not-allowed}
+
     .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
     .name{font-size:clamp(15px,4vw,18px)}
     .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
+
     .footer{text-align:center;color:var(--muted)}
     .back{color:#9bb3d1;text-decoration:none}
     .back:hover{text-decoration:underline}
-    .errBox{display:none;background:#2b0e12;border:1px solid #6b1f28;color:#ffd6db;padding:12px;border-radius:12px}
-      /* Modal minimal pour saisie (MVP) */
-    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+
+    /* Modal */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);}
     .modal.show{display:grid}
     .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
-    .sheet h3{margin:0 0 8px}
-    .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
+    .mTitle{margin:0 0 8px;font-size:1.2rem}
     .row{display:grid;gap:8px}
-    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
+    .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
+    .tag{padding:4px 8px;border-radius:999px;border:1px solid #334567;color:#cfe1ff;background:rgba(255,255,255,.06);font-size:.9rem}
+    .tag.ok{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.1);color:#baf7c9}
+    .tag.wait{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08);color:#ffe6b3}
+    .errBox{display:none;background:#2b0e12;border:1px solid #6b1f28;color:#ffd6db;padding:10px;border-radius:10px}
   </style>
 </head>
 <body>
@@ -52,8 +61,8 @@
       <div class="swap" id="swapInfo">—</div>
     </div>
 
-    <section class="card grid">
-      <div class="lbl">Saisissez votre score</div>
+    <section class="card grid" aria-labelledby="lblSaisie">
+      <div id="lblSaisie" class="lbl">Saisissez votre score</div>
       <button id="btnOpen" class="btn">Inscrire le pointage</button>
     </section>
 
@@ -66,113 +75,183 @@
     <div class="footer">
       <a class="back" href="selection_jeux.html">← Retour</a>
     </div>
-      <!-- Modal MVP pour activer le bouton "Inscrire le pointage" -->
-    <div class="modal" id="modal">
-      <div class="sheet">
-        <h3>Saisir mon score (démo)</h3>
-        <div class="row">
-          <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
-          <button id="btnSaveScore" class="btn">Valider (démo)</button>
-          <button id="btnCloseModal" class="btn ghost">Fermer</button>
-        </div>
+  </main>
+
+  <!-- Modale de saisie -->
+  <div id="modal" class="modal">
+    <div class="sheet">
+      <h3 class="mTitle">Scores du tour</h3>
+      <div class="row" id="inputs"></div>
+      <div class="lbl" style="margin-top:6px">Total du tour: <span id="sum">0</span> / 25</div>
+      <div id="mErr" class="errBox"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="btnFinalize" class="btn" disabled>Finaliser le tour</button>
+        <button id="btnClose" class="btn ghost">Fermer</button>
       </div>
     </div>
-  </main>
+  </div>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+    import { getFirestore, doc, getDoc, onSnapshot, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
+    // --- Config & helpers
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
-
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
-    const GID  = qs.get('gid');
-
-    // Identifiant d'appareil pour mise en évidence du brasseur
-    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+ '_' + Math.random().toString(36).slice(2));
+    const GID  = qs.get('gid')||null;
+    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+'_'+Math.random().toString(36).slice(2));
     localStorage.setItem('deviceId', DEVICE_ID);
 
     const $ = (id)=>document.getElementById(id);
-    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+    const setText = (id, v)=>{ const n=$(id); if(n) n.textContent = v; };
 
-    function ensureTotalsList(){
-      let box = $('#totalsList');
-      if(box) return box;
-      const wrap = document.querySelector('.wrap');
-      if(!wrap){ console.warn('[ensureTotalsList] .wrap introuvable'); return null; }
-      const sect = document.createElement('section');
-      sect.className = 'card grid';
-      sect.id = 'totalsCard';
-      sect.innerHTML = '<div class="lbl">Scores totaux</div><div id="totalsList" class="grid"></div><div class="lbl">Soirée #<span id="code">----</span></div>';
-      wrap.appendChild(sect);
-      return $('#totalsList');
-    }
+    const swapCycle = ['À droite','À gauche','Au centre','Garde tes cartes'];
+    const soireeRef = doc(db,'soirees', CODE);
+    const gameRef   = doc(db,'scores_dame_de_pique', GID);
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
+    let players = [];   // [{name, order, deviceId}]
+    let myIndex = null; // index dans players
 
     function renderTotals(players, totals){
-      const box = ensureTotalsList();
+      const box = $('totalsList');
       if(!box){ console.warn('[renderTotals] #totalsList introuvable'); return; }
-      box.innerHTML='';
-      const arr=(players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-      arr.forEach((p,i)=>{
-        const line=document.createElement('div');
-        line.className='line';
-        line.innerHTML=`<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
+      box.innerHTML = '';
+      (players||[]).sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,i)=>{
+        const line = document.createElement('div');
+        line.className = 'line';
+        line.innerHTML = `<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
     }
-    window.renderTotals = renderTotals;
 
-    async function init(){
-      await ensureAuth();
-      setText('code', CODE||'----');
+    function buildModal(state){
+      const wrap = $('inputs');
+      wrap.innerHTML = '';
+      const inputs = state.currentInputs||{};
+      const confirmed = state.confirmedInputs||{};
 
-      // Hooks bouton modal
-      const modal = document.getElementById('modal');
-      const openBtn = document.getElementById('btnOpen');
-      const closeBtn = document.getElementById('btnCloseModal');
-      const saveBtn = document.getElementById('btnSaveScore');
-      if(openBtn){ openBtn.addEventListener('click', ()=> modal?.classList.add('show')); }
-      if(closeBtn){ closeBtn.addEventListener('click', ()=> modal?.classList.remove('show')); }
-      if(saveBtn){ saveBtn.addEventListener('click', ()=> { modal?.classList.remove('show'); /* futur: écriture Firestore */}); }
+      (players||[]).sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
+        const row = document.createElement('div');
+        row.style.display='grid'; row.style.gridTemplateColumns='1fr auto'; row.style.gap='8px';
+        const name = document.createElement('div'); name.className='name'; name.textContent = p?.name||`Joueur ${idx+1}`;
 
-      let players=[];
-
-      onSnapshot(doc(db,'soirees',CODE), s=>{
-        if(!s.exists()) return;
-        const d=s.data();
-        players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        setText('dealerName', d.leaderName || '—');
-        setText('swapInfo', (d.currentGame?.type==='dame_de_pique') ? 'Échange actif' : '—');
-        // Mise en évidence de l'écran du brasseur
-        const isDealerDevice = d?.leaderDeviceId && d.leaderDeviceId === DEVICE_ID;
-        document.body.classList.toggle('dealer', !!isDealerDevice);
+        const isMe = (typeof myIndex==='number' && myIndex===idx);
+        if(isMe){
+          const inp = document.createElement('input');
+          inp.type='number'; inp.min='0'; inp.max='25'; inp.step='1'; inp.placeholder='0–25'; inp.className='inp';
+          const cur = inputs[idx]; if(typeof cur!=='undefined') inp.value = cur;
+          inp.addEventListener('input', ()=>{
+            const v = inp.value.trim(); const n = v===''? '': Math.max(0, Math.min(25, Number(v)));
+            updateDoc(gameRef, { [`currentInputs.${idx}`]: n });
+          });
+          const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Valider mon score';
+          btn.addEventListener('click', ()=>{
+            const val = inp.value.trim(); if(val===''||isNaN(Number(val))) return;
+            const n = Math.max(0, Math.min(25, Number(val)));
+            updateDoc(gameRef, { [`currentInputs.${idx}`]: n, [`confirmedInputs.${idx}`]: true });
+          });
+          const cell = document.createElement('div'); cell.style.display='grid'; cell.style.gridTemplateColumns='1fr auto'; cell.style.gap='8px';
+          cell.appendChild(inp); cell.appendChild(btn);
+          row.appendChild(name); row.appendChild(cell);
+        } else {
+          const tag = document.createElement('div'); tag.className='tag ' + (confirmed[idx] ? 'ok' : 'wait'); tag.textContent = confirmed[idx] ? 'Validé' : (typeof inputs[idx]!=="undefined"? String(inputs[idx]) : '—');
+          row.appendChild(name); row.appendChild(tag);
+        }
+        wrap.appendChild(row);
       });
 
-      onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
+      const sum = Object.values(inputs).reduce((a,b)=> a + (Number(b)||0), 0);
+      setText('sum', String(sum));
+      const everyone = players.length>0 && players.every((_,i)=> !!confirmed[i]);
+      const canFinalize = (sum===25 && everyone);
+      const err = $('mErr');
+      err.style.display = canFinalize? 'none':'block';
+      err.textContent = canFinalize? '' : (everyone? 'Le total n\'est pas 25. Vérifiez vos scores.' : 'Attente des validations…');
+      $('btnFinalize').disabled = !canFinalize;
+    }
+
+    function applyGrandChelem(arr){
+      const n = arr.length; const max = Math.max(...arr); const zeros = arr.filter(x=>x===0).length;
+      if(max===25 && zeros===n-1){
+        const idxMax = arr.findIndex(x=>x===25);
+        return arr.map((x,i)=> i===idxMax ? 0 : 25);
+      }
+      return arr;
+    }
+
+    async function finalizeRound(state){
+      const n = players.length; const inputs = state.currentInputs||{}; const confirmed = state.confirmedInputs||{};
+      const sum = Object.values(inputs).reduce((a,b)=> a+(Number(b)||0), 0);
+      const everyone = players.length>0 && players.every((_,i)=> !!confirmed[i]);
+      if(!(sum===25 && everyone)) return; // garde-fou
+
+      let arr = Array.from({length:n}, (_,i)=> Number(inputs[i]||0));
+      arr = applyGrandChelem(arr);
+
+      const prev = state.totals || Array.from({length:n}, ()=>0);
+      const totals = prev.map((t,i)=> t + (Number(arr[i])||0));
+      const round = Number(state.round||1) + 1;
+
+      await updateDoc(gameRef, {
+        [`rounds.${round-1}`]: arr,
+        totals,
+        round,
+        currentInputs: {},
+        confirmedInputs: {},
+        updatedAt: serverTimestamp()
+      });
+      $('modal').classList.remove('show');
+    }
+
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth anonyme échouée', e); } }
+
+    async function init(){
+      if(!CODE || !GID){ alert('Paramètres manquants (code/gid).'); location.href = `selection_jeux.html?code=${CODE||''}`; return; }
+      await ensureAuth();
+      setText('code', CODE);
+
+      // Soirée (noms + appareil + leader)
+      onSnapshot(soireeRef, s=>{
         if(!s.exists()) return;
-        const g=s.data();
-        window.currentRound=g.round||1;
-        window.lastTotals=g.totals||[];
-        setText('round', String(window.currentRound));
-        renderTotals(players, window.lastTotals);
+        const d = s.data();
+        players = (Array.isArray(d.players)? d.players: []).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+        myIndex = players.findIndex(p=> p?.deviceId === DEVICE_ID);
+        setText('dealerName', (players[(d.leaderIndex??0)]||{}).name || '—');
+        document.body.classList.toggle('dealer', players[d.leaderIndex||0]?.deviceId === DEVICE_ID);
+        setText('swapInfo', ['À droite','À gauche','Au centre','Garde tes cartes'][(Number(d.round||1)-1)%4] || '—');
+      });
+
+      // Jeu (round + totaux + modale temps réel)
+      onSnapshot(gameRef, s=>{
+        if(!s.exists()) return;
+        const g = s.data();
+        setText('round', String(Number(g.round||1)));
+        renderTotals(players, g.totals||[]);
+        if($('modal').classList.contains('show')) buildModal({
+          currentInputs: g.currentInputs||{},
+          confirmedInputs: g.confirmedInputs||{}
+        });
+      });
+
+      // Boutons
+      $('btnOpen').addEventListener('click', async ()=>{
+        const snap = await getDoc(gameRef); const g = snap.data()||{};
+        buildModal({ currentInputs:g.currentInputs||{}, confirmedInputs:g.confirmedInputs||{} });
+        $('modal').classList.add('show');
+      });
+      $('btnClose').addEventListener('click', ()=> $('modal').classList.remove('show'));
+      $('btnFinalize').addEventListener('click', async ()=>{
+        const snap = await getDoc(gameRef); const g = snap.data()||{}; await finalizeRound(g);
       });
     }
 
-    window.addEventListener('DOMContentLoaded', ()=>{
-      // S'assure que la section existe avant tout rendu asynchrone
-      ensureTotalsList();
-      init();
-    });
-
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
-
