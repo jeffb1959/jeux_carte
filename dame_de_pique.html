@@ -1,5 +1,5 @@
-<!-- Version: v4.7 (2025-11-04) -->
-<!-- Dame de Pique — Fix: handle Firestore permission errors + sandbox fallback + clear guidance -->
+<!-- Version: v4.7.2 (2025-11-04) -->
+<!-- Dame de Pique — Connexion temps réel fix: abonnements soirees/{code} + scores_dame_de_pique/{gid}, rendu dealer/round/totaux -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -36,15 +36,12 @@
     .back{color:#9bb3d1;text-decoration:none}
     .back:hover{text-decoration:underline}
 
-    .testBanner{width:100%;background:#facc15;color:#111;font-weight:700;text-align:center;padding:8px;border-radius:10px;border:1px solid #854d0e}
     .errBox{display:none;background:#2b0e12;border:1px solid #6b1f28;color:#ffd6db;padding:12px;border-radius:12px}
     .errBox pre{white-space:pre-wrap;margin:8px 0 0 0}
   </style>
 </head>
 <body>
   <main class="wrap">
-    <div id="testBanner" class="testBanner" style="display:none;">⚠️ Mode test — non enregistré pour les statistiques finales</div>
-
     <header class="titleRow">
       <h1>Dame De Pique</h1>
       <div class="lbl">Tour n° <span id="round">1</span></div>
@@ -66,28 +63,9 @@
       <div class="lbl">Soirée #<span id="code">----</span></div>
     </section>
 
-    <section id="testSection" class="card grid" style="display:none;background:#facc15;color:#111;">
-      <div><strong>Mode test</strong> : aucune donnée finale enregistrée</div>
-      <button id="btnCreateTest" class="btn" style="background:#4f46e5;color:#fff;">Créer une partie de test</button>
-    </section>
-
     <section id="permHelp" class="errBox">
-      <strong>Problème d'accès Firestore</strong> — Permissions insuffisantes.<br/>
-      <ul style="margin:8px 0 0 18px;line-height:1.4">
-        <li>Active <em>Auth → Sign-in method → Anonymous</em> dans Firebase.</li>
-        <li>Règles Firestore pendant le développement :
-          <pre>rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}</pre>
-        </li>
-        <li>Recharge ensuite cette page.</li>
-      </ul>
-      <div style="margin-top:8px">Astuce : utilisez le bouton « Créer une partie de test » (sandbox local) pour continuer vos essais.</div>
+      <strong>Problème d'accès Firestore</strong>
+      <pre id="permMsg"></pre>
     </section>
 
     <div class="footer">
@@ -95,11 +73,10 @@ service cloud.firestore {
     </div>
   </main>
 
-  <!-- Scripts essentiels + mode test -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, addDoc, collection, getDoc, updateDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+    import { getFirestore, doc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2', storageBucket:'soireecartev2.firebasestorage.app', messagingSenderId:'784781686361', appId:'1:784781686361:web:033693cb22fb1a55af2348' };
 
@@ -110,131 +87,81 @@ service cloud.firestore {
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
     const GID  = qs.get('gid')||null;
-
     const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+'_'+Math.random().toString(36).slice(2));
     localStorage.setItem('deviceId', DEVICE_ID);
 
     const $ = (id)=>document.getElementById(id);
-
-    let USE_SANDBOX = false; // bascule auto si permission-denied
-
-    async function ensureAuth(){
-      try{ await signInAnonymously(auth); }
-      catch(e){ console.warn('Auth error', e); showPermsHelp(e); }
-    }
-
-    function showPermsHelp(err){
-      const box = $('#permHelp');
-      if(!box) return;
-      box.style.display='block';
-      if(err) {
-        const pre = document.createElement('pre');
-        pre.textContent = String(err.message||err);
-        box.appendChild(pre);
-      }
-    }
-
-    function enableSandboxBanner(){
-      USE_SANDBOX = true;
-      $('#testBanner').style.display='block';
-      $('#testSection').style.display='block';
-    }
-
-    async function createTestGame(){
-      await ensureAuth();
-      try{
-        const ref = await addDoc(collection(db,'scores_dame_de_pique'),{
-          round:1, totals:[], currentInputs:{}, confirmedInputs:{}, createdAt:serverTimestamp(), state:'active', test:true
-        });
-        const gid = ref.id;
-        location.href = `dame_de_pique.html?code=${CODE||'0000'}&gid=${gid}`;
-      }catch(e){
-        console.warn('createTestGame permission issue', e);
-        showPermsHelp(e);
-        enableSandboxBanner();
-        const gid = 'local-'+Date.now().toString(36);
-        const key = `sandbox_dp_${gid}`;
-        localStorage.setItem(key, JSON.stringify({ round:1, totals:[], currentInputs:{}, confirmedInputs:{}, test:true }));
-        location.href = `dame_de_pique.html?code=${CODE||'0000'}&gid=${gid}&mode=sandbox`;
-      }
-    }
-
-    // --- Ajouts pour rétablir la connexion temps réel ---
     const swapCycle = ['À droite','À gauche','Au centre','Garde tes cartes'];
 
-    function renderTotals(totals=[], players=[]) {
-      const box = $('#totalsList'); if(!box) return;
-      box.innerHTML = '';
-      players.forEach((p,i)=>{
+    function dealerIndexFor(round, leaderIndex, n){
+      if(typeof leaderIndex !== 'number' || leaderIndex<0) return 0;
+      if(!n||n<=0) return 0;
+      return (leaderIndex + (round-1)) % n;
+    }
+
+    function renderTotals(players, totals){
+      const box = $('#totalsList'); box.innerHTML = '';
+      const arr = (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      arr.forEach((p,i)=>{
         const line = document.createElement('div');
         line.className = 'line';
-        line.innerHTML = `<div class=\"name\">${p?.name||('Joueur '+(i+1))}</div><div class=\"pts\">${Number(totals[i]||0)}</div>`;
+        line.innerHTML = `<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
     }
-    function dealerIndexFor(round, leaderIndex, n){
-      if(typeof leaderIndex!=='number'||leaderIndex<0||!n) return 0;
-      return (leaderIndex + (round-1)) % n;
-    }
-    function renderDealer(round, leaderIndex, players){
-      const idx = dealerIndexFor(round, leaderIndex, players.length);
-      const dealer = players[idx];
-      const nameNode = $('#dealerName'); if(nameNode) nameNode.textContent = dealer?.name || '—';
-      const swapNode = $('#swapInfo'); if(swapNode) swapNode.textContent = swapCycle[(round-1)%4];
-      const isDealerHere = dealer?.deviceId && dealer.deviceId === DEVICE_ID;
-      document.body.classList.toggle('dealer', !!isDealerHere);
+
+    function showPerm(err){
+      const box=$('#permHelp'); const pre=$('#permMsg');
+      if(!box||!pre) return; box.style.display='block'; pre.textContent=String(err?.message||err||'permission/unknown');
     }
 
-    // Diagnostics légers
-    function runSelfTests(){
-      try{
-        console.groupCollapsed('[DP v4.7.1] Self-tests');
-        console.assert(typeof CODE === 'string', 'CODE doit être une string');
-        console.assert(DEVICE_ID && DEVICE_ID.length>0, 'DEVICE_ID doit exister');
-        console.assert(document.querySelector('.wrap')!=null, 'Container présent');
-        console.groupEnd();
-      }catch(_){/* no-op */}
+    async function ensureAuth(){
+      try{ await signInAnonymously(auth); }catch(e){ console.warn(e); showPerm(e); }
     }
 
-    window.addEventListener('DOMContentLoaded', async ()=>{
-      runSelfTests();
-
-      const codeNode = $('#code'); if(codeNode) codeNode.textContent = CODE || '----';
-
-      if(!GID){
-        // Pas de gid → proposer la création de test
-        $('#testBanner').style.display='block';
-        $('#testSection').style.display='block';
-        $('#btnCreateTest').addEventListener('click', createTestGame);
-        return; // rien d'autre à faire sans GID
+    async function init(){
+      $('#code').textContent = CODE || '----';
+      if(!CODE || !GID){
+        showPerm('Paramètres manquants (code/gid).');
+        return;
       }
-
       await ensureAuth();
 
+      // Abonnement aux joueurs/leader (soirees/{code})
       const soireeRef = doc(db,'soirees', CODE);
-      const gameRef   = doc(db,'scores_dame_de_pique', GID);
-
-      let players = [];
-
-      // Abonnement à la soirée : noms + deviceId + leaderIndex
+      let playersCache = [];
       onSnapshot(soireeRef, (snap)=>{
         if(!snap.exists()) return;
         const s = snap.data();
-        players = (Array.isArray(s.players)? s.players: []).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        const round = Number($('#round')?.textContent||'1') || 1;
-        renderDealer(round, s.leaderIndex, players);
-      }, (err)=>{ showPermsHelp(err); });
+        const players = Array.isArray(s.players)? s.players.slice().sort((a,b)=>(a?.order??0)-(b?.order??0)) : [];
+        playersCache = players;
+        const round = Number(currentRound)||1; // currentRound mis à jour par l'autre snapshot
+        const idx = dealerIndexFor(round, s.leaderIndex, players.length);
+        const dealer = players[idx];
+        $('#dealerName').textContent = dealer?.name || '—';
+        $('#swapInfo').textContent = swapCycle[(round-1)%4];
+        const isDealerDevice = dealer?.deviceId && dealer.deviceId === DEVICE_ID;
+        document.body.classList.toggle('dealer', !!isDealerDevice);
+        // rafraîchir les totaux à structure constante
+        renderTotals(playersCache, lastTotals);
+      }, (err)=> showPerm(err));
 
-      // Abonnement au document de jeu : round + totaux
+      // Abonnement à l'état du jeu (scores_dame_de_pique/{gid})
+      const gameRef = doc(db,'scores_dame_de_pique', GID);
+      window.lastTotals = []; // debug global léger
+      window.currentRound = 1;
       onSnapshot(gameRef, (snap)=>{
         if(!snap.exists()) return;
         const g = snap.data();
-        const round = Number(g.round||1);
-        const roundNode = $('#round'); if(roundNode) roundNode.textContent = round;
-        renderDealer(round, (g.leaderIndex ?? undefined), players);
-        renderTotals(g.totals||[], players);
-      }, (err)=>{ showPermsHelp(err); });
-    });
+        const round = Number(g.round||1); window.currentRound = round;
+        $('#round').textContent = round;
+        const totals = Array.isArray(g.totals)? g.totals : [];
+        window.lastTotals = totals;
+        renderTotals(playersCache, totals);
+      }, (err)=> showPerm(err));
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
