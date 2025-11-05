@@ -104,12 +104,20 @@ window.lastTotals = [];
     }
 
     function renderTotals(players, totals){
-      const box = $('#totalsList'); box.innerHTML = '';
+      const box = $('#totalsList');
+      if(!box){
+        console.warn('[renderTotals] #totalsList introuvable, rendu ignoré.');
+        return;
+      }
+      box.innerHTML = '';
       const arr = (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
       arr.forEach((p,i)=>{
         const line = document.createElement('div');
         line.className = 'line';
         line.innerHTML = `<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
+        box.appendChild(line);
+      });
+    }</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
     }
