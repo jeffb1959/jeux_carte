@@ -1,5 +1,5 @@
 <!-- Version: v4.8.3 (2025-11-04) -->
-<!-- Dame de Pique — Fix init DOM & totals container (no duplicates) + defer snapshots until DOMContentLoaded -->
+<!-- Dame de Pique — Hardening DOM: garde-fous NULL, création #totalsList robuste avant rendus, renderTotals global -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -16,35 +16,32 @@
     .titleRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%}
     h1{margin:0;font-size:clamp(22px,5vw,28px)}
     .lbl{color:var(--muted);font-size:clamp(15px,4vw,18px)}
-
     .brasseur{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px}
     .brName{font-size:clamp(18px,5vw,22px);font-weight:700;color:var(--accent)}
     .swap{font-size:clamp(14px,4vw,16px);color:var(--muted)}
-
     .card{width:100%;background:color-mix(in srgb, var(--card) 90%, white 10%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
     .grid{display:grid;gap:12px}
-
     .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:52px;padding:0 16px;border-radius:16px;font-size:clamp(17px,4vw,19px);font-weight:800;color:#0c111b;background:var(--accent)}
-    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
     .btn[disabled]{opacity:.6;filter:grayscale(.3);cursor:not-allowed}
-
     .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
     .name{font-size:clamp(15px,4vw,18px)}
     .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
-
     .footer{text-align:center;color:var(--muted)}
     .back{color:#9bb3d1;text-decoration:none}
     .back:hover{text-decoration:underline}
-
-    .testBanner{width:100%;background:#facc15;color:#111;font-weight:700;text-align:center;padding:8px;border-radius:10px;border:1px solid #854d0e}
     .errBox{display:none;background:#2b0e12;border:1px solid #6b1f28;color:#ffd6db;padding:12px;border-radius:12px}
-    .errBox pre{white-space:pre-wrap;margin:8px 0 0 0}
+      /* Modal minimal pour saisie (MVP) */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+    .modal.show{display:grid}
+    .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
+    .sheet h3{margin:0 0 8px}
+    .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
+    .row{display:grid;gap:8px}
+    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
   </style>
 </head>
 <body>
   <main class="wrap">
-    <div id="testBanner" class="testBanner" style="display:none;">⚠️ Mode test — non enregistré pour les statistiques finales</div>
-
     <header class="titleRow">
       <h1>Dame De Pique</h1>
       <div class="lbl">Tour n° <span id="round">1</span></div>
@@ -55,25 +52,30 @@
       <div class="swap" id="swapInfo">—</div>
     </div>
 
-    <section class="card grid" aria-labelledby="lblSaisie">
-      <div id="lblSaisie" class="lbl">Saisissez votre score</div>
+    <section class="card grid">
+      <div class="lbl">Saisissez votre score</div>
       <button id="btnOpen" class="btn">Inscrire le pointage</button>
     </section>
 
     <section class="card grid" id="totalsCard">
       <div class="lbl">Scores totaux</div>
-      <!-- Le conteneur sera créé une seule fois par le script si absent -->
       <div id="totalsList" class="grid"></div>
       <div class="lbl">Soirée #<span id="code">----</span></div>
     </section>
 
-    <section id="permHelp" class="errBox">
-      <strong>Problème d'accès Firestore</strong> — Permissions insuffisantes.
-      <div style="margin-top:8px">Active l'auth anonyme et des règles de dev (request.auth != null), puis recharge.</div>
-    </section>
-
     <div class="footer">
       <a class="back" href="selection_jeux.html">← Retour</a>
+    </div>
+      <!-- Modal MVP pour activer le bouton "Inscrire le pointage" -->
+    <div class="modal" id="modal">
+      <div class="sheet">
+        <h3>Saisir mon score (démo)</h3>
+        <div class="row">
+          <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
+          <button id="btnSaveScore" class="btn">Valider (démo)</button>
+          <button id="btnCloseModal" class="btn ghost">Fermer</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -86,87 +88,91 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db   = getFirestore(app);
+    const db = getFirestore(app);
 
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
-    const GID  = qs.get('gid')||null;
+    const GID  = qs.get('gid');
+
+    // Identifiant d'appareil pour mise en évidence du brasseur
+    const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+ '_' + Math.random().toString(36).slice(2));
+    localStorage.setItem('deviceId', DEVICE_ID);
 
     const $ = (id)=>document.getElementById(id);
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
-    // --- Utilitaires DOM robustes ---
-    function ensureTotalsBox(){
-      let box = $('totalsList');
-      if(!box){
-        const host = $('totalsCard') || document.body;
-        box = document.createElement('div');
-        box.id = 'totalsList';
-        box.className = 'grid';
-        host.appendChild(box);
-      }
-      return box;
+    function ensureTotalsList(){
+      let box = $('#totalsList');
+      if(box) return box;
+      const wrap = document.querySelector('.wrap');
+      if(!wrap){ console.warn('[ensureTotalsList] .wrap introuvable'); return null; }
+      const sect = document.createElement('section');
+      sect.className = 'card grid';
+      sect.id = 'totalsCard';
+      sect.innerHTML = '<div class="lbl">Scores totaux</div><div id="totalsList" class="grid"></div><div class="lbl">Soirée #<span id="code">----</span></div>';
+      wrap.appendChild(sect);
+      return $('#totalsList');
     }
 
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
+
     function renderTotals(players, totals){
-      const box = ensureTotalsBox();
+      const box = ensureTotalsList();
       if(!box){ console.warn('[renderTotals] #totalsList introuvable'); return; }
-      box.innerHTML = '';
-      (players||[]).forEach((p,i)=>{
-        const line = document.createElement('div');
-        line.className = 'line';
-        line.innerHTML = `
-          <div class="name">${p?.name||'—'}</div>
-          <div class="pts">${Number((totals||[])[i]||0)}</div>
-        `;
+      box.innerHTML='';
+      const arr=(players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      arr.forEach((p,i)=>{
+        const line=document.createElement('div');
+        line.className='line';
+        line.innerHTML=`<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
     }
-
-    function showPermsHelp(e){
-      const box = $('permHelp'); if(!box) return;
-      box.style.display='block';
-      if(e){ const pre=document.createElement('pre'); pre.textContent = String(e.message||e); box.appendChild(pre); }
-    }
-
-    async function ensureAuth(){ try{ await signInAnonymously(auth); } catch(e){ console.warn('Auth error', e); showPermsHelp(e); } }
+    window.renderTotals = renderTotals;
 
     async function init(){
-      // Attendre que le DOM soit prêt AVANT de lire/écrire
-      ensureTotalsBox();
-      const codeNode = $('code'); if(codeNode) codeNode.textContent = CODE || '----';
       await ensureAuth();
+      setText('code', CODE||'----');
 
-      if(!CODE||!GID){ console.warn('Paramètres manquants (code/gid)'); return; }
+      // Hooks bouton modal
+      const modal = document.getElementById('modal');
+      const openBtn = document.getElementById('btnOpen');
+      const closeBtn = document.getElementById('btnCloseModal');
+      const saveBtn = document.getElementById('btnSaveScore');
+      if(openBtn){ openBtn.addEventListener('click', ()=> modal?.classList.add('show')); }
+      if(closeBtn){ closeBtn.addEventListener('click', ()=> modal?.classList.remove('show')); }
+      if(saveBtn){ saveBtn.addEventListener('click', ()=> { modal?.classList.remove('show'); /* futur: écriture Firestore */}); }
 
-      // Pré-charger les infos de la soirée pour les noms & le brasseur
-      const soireeRef = doc(db,'soirees', CODE);
-      const gRef      = doc(db,'scores_dame_de_pique', GID);
+      let players=[];
 
-      // 1) Abonnement au document de soirée (noms/leader)
-      onSnapshot(soireeRef, (snap)=>{
-        if(!snap.exists()) return;
-        const s = snap.data();
-        const players = (Array.isArray(s.players)?s.players:[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        const dealer = (typeof s.leaderIndex==='number')? players[s.leaderIndex] : null;
-        const name = dealer?.name || s.leaderName || '—';
-        const dEl=$('dealerName'); if(dEl) dEl.textContent = (name||'').toLowerCase();
-        const roundEl=$('round'); if(roundEl && typeof window.currentRound==='number'){ roundEl.textContent = String(window.currentRound); }
-        // Conserver les joueurs pour renderTotals côté jeu si besoin
-        window.__players = players;
+      onSnapshot(doc(db,'soirees',CODE), s=>{
+        if(!s.exists()) return;
+        const d=s.data();
+        players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+        setText('dealerName', d.leaderName || '—');
+        setText('swapInfo', (d.currentGame?.type==='dame_de_pique') ? 'Échange actif' : '—');
+        // Mise en évidence de l'écran du brasseur
+        const isDealerDevice = d?.leaderDeviceId && d.leaderDeviceId === DEVICE_ID;
+        document.body.classList.toggle('dealer', !!isDealerDevice);
       });
 
-      // 2) Abonnement au document de jeu (round/totals)
-      onSnapshot(gRef, (snap)=>{
-        if(!snap.exists()) return;
-        const g = snap.data();
-        window.currentRound = Number(g.round||1);
-        window.lastTotals   = Array.isArray(g.totals)? g.totals : [];
-        const roundEl=$('round'); if(roundEl) roundEl.textContent = String(window.currentRound);
-        renderTotals(window.__players||[], window.lastTotals);
+      onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
+        if(!s.exists()) return;
+        const g=s.data();
+        window.currentRound=g.round||1;
+        window.lastTotals=g.totals||[];
+        setText('round', String(window.currentRound));
+        renderTotals(players, window.lastTotals);
       });
     }
 
-    window.addEventListener('DOMContentLoaded', init, { once:true });
+    window.addEventListener('DOMContentLoaded', ()=>{
+      // S'assure que la section existe avant tout rendu asynchrone
+      ensureTotalsList();
+      init();
+    });
+      init();
+    });
   </script>
 </body>
 </html>
