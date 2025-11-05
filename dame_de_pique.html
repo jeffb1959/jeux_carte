@@ -1,4 +1,5 @@
-<!-- Version: v4.9.6 (2025-11-05) -->
+<!-- Version: v4.9.7 (2025-11-05) -->
+<!-- Dame de Pique — Rendu joueurs+totaux restauré: écoutes combinées (soirees+game) + renderTotals robuste -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6,39 +7,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Dame de Pique — Saisie du score</title>
   <style>
-    body {background:#0b1220;color:#f5f7fb;font-family:system-ui;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;padding:1rem;}
-    h1 {margin:0.5rem 0;}
-    .card {background:#111a2e;border-radius:16px;padding:1rem;margin:0.5rem;width:100%;max-width:380px;box-shadow:0 0 10px rgba(0,0,0,.4)}
-    .btn {background:#4fd1c5;border:none;color:#0c111b;font-weight:700;border-radius:12px;padding:0.8rem;width:100%;cursor:pointer}
-    .grid {display:grid;gap:8px}
-    .line {display:flex;justify-content:space-between;background:#0f1a30;border-radius:8px;padding:8px 12px}
-    .modal {position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;place-items:center}
-    .modal.show {display:grid}
-    .sheet {background:#0d1527;border-radius:16px;padding:1rem;width:min(90vw,380px)}
-    .inp {width:100%;padding:10px;border-radius:8px;border:1px solid #334567;background:#0b1324;color:#f5f7fb;margin-bottom:8px}
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --line:#243252; --dealer:#0b5a29; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body.dealer{ background: linear-gradient(180deg, var(--dealer), #062612 60%); }
+    .wrap{max-width:390px;margin:0 auto;padding:16px;display:grid;gap:16px;place-items:center}
+    .titleRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%}
+    h1{margin:0;font-size:clamp(22px,5vw,28px)}
+    .lbl{color:var(--muted);font-size:clamp(15px,4vw,18px)}
+    .brasseur{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .brName{font-size:clamp(18px,5vw,22px);font-weight:700;color:var(--accent)}
+    .swap{font-size:clamp(14px,4vw,16px);color:var(--muted)}
+    .card{width:100%;background:color-mix(in srgb, var(--card) 90%, white 10%);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .grid{display:grid;gap:12px}
+    .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:52px;padding:0 16px;border-radius:16px;font-size:clamp(17px,4vw,19px);font-weight:800;color:#0c111b;background:var(--accent)}
+    .btn[disabled]{opacity:.6;filter:grayscale(.3);cursor:not-allowed}
+    .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
+    .name{font-size:clamp(15px,4vw,18px)}
+    .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
+    .footer{text-align:center;color:var(--muted)}
+    .back{color:#9bb3d1;text-decoration:none}
+    .back:hover{text-decoration:underline}
+    /* Modal MVP */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+    .modal.show{display:grid}
+    .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
+    .sheet h3{margin:0 0 8px}
+    .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
+    .row{display:grid;gap:8px}
+    .btn.ghost{background:transparent;color:#cfe1ff;border:1px solid #3a4a6a}
   </style>
 </head>
 <body>
-  <h1>Dame De Pique</h1>
-  <div>Brasseur : <span id="dealerName">—</span></div>
-  <div class="card">
-    <div>Saisissez votre score</div>
-    <button id="btnOpen" class="btn">Inscrire le pointage</button>
-  </div>
-  <div class="card">
-    <div>Scores totaux</div>
-    <div id="totalsList" class="grid"></div>
-    <div>Soirée #<span id="code">----</span></div>
-  </div>
-  <a href="selection_jeux.html" style="color:#9bb3d1">← Retour</a>
+  <main class="wrap">
+    <header class="titleRow">
+      <h1>Dame De Pique</h1>
+      <div class="lbl">Tour n° <span id="round">1</span></div>
+    </header>
 
-  <div class="modal" id="modal">
-    <div class="sheet">
-      <h3>Saisir mon score</h3>
-      <input id="scoreInput" class="inp" type="number" placeholder="0–25" />
-      <button id="btnSaveScore" class="btn">Valider</button>
+    <div class="brasseur">
+      <div>Brasseur : <span id="dealerName" class="brName">—</span></div>
+      <div class="swap" id="swapInfo">—</div>
     </div>
-  </div>
+
+    <section class="card grid">
+      <div class="lbl">Saisissez votre score</div>
+      <button id="btnOpen" class="btn">Inscrire le pointage</button>
+    </section>
+
+    <section class="card grid" id="totalsCard">
+      <div class="lbl">Scores totaux</div>
+      <div id="totalsList" class="grid"></div>
+      <div class="lbl">Soirée #<span id="code">----</span></div>
+    </section>
+
+    <div class="footer">
+      <a class="back" href="selection_jeux.html">← Retour</a>
+    </div>
+
+    <!-- Modale MVP (toujours non-bloquante pour le rendu principal) -->
+    <div class="modal" id="modal">
+      <div class="sheet">
+        <h3>Saisir mon score (démo)</h3>
+        <div class="row">
+          <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
+          <button id="btnSaveScore" class="btn">Valider (démo)</button>
+          <button id="btnCloseModal" class="btn ghost">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </main>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
@@ -46,7 +85,6 @@
     import { getFirestore, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
-
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
@@ -59,84 +97,84 @@
     localStorage.setItem('deviceId', DEVICE_ID);
 
     const $ = (id)=>document.getElementById(id);
-    const setText = (id, txt)=>{ const el=$(id); if(el) el.textContent=txt; };
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('auth',e); } }
+    function ensureTotalsList(){
+      let box = $('#totalsList');
+      if(box) return box;
+      const wrap = document.querySelector('.wrap');
+      if(!wrap) return null;
+      const sect = document.createElement('section');
+      sect.className = 'card grid';
+      sect.id = 'totalsCard';
+      sect.innerHTML = '<div class="lbl">Scores totaux</div><div id="totalsList" class="grid"></div><div class="lbl">Soirée #<span id="code">----</span></div>';
+      wrap.appendChild(sect);
+      return $('#totalsList');
+    }
 
     function renderTotals(players, totals){
-      const box = $('#totalsList');
-      if(!box) return;
+      const box = ensureTotalsList();
+      if(!box){ console.warn('[renderTotals] #totalsList introuvable'); return; }
       box.innerHTML='';
-      (players||[]).forEach((p,i)=>{
+      const arr=(players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      arr.forEach((p,i)=>{
         const line=document.createElement('div');
         line.className='line';
-        line.innerHTML=`<div>${p?.name||'—'}</div><div>${Number((totals||[])[i]||0)}</div>`;
+        line.innerHTML=`<div class="name">${p?.name||'—'}</div><div class="pts">${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
+    }
+    window.renderTotals = renderTotals; // utile pour debug console
+
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
+
+    // État combiné (soiree + game)
+    const state = { players: [], totals: [], round: 1 };
+    function tryRender(){
+      setText('round', String(state.round||1));
+      renderTotals(state.players, state.totals);
+    }
+
+    function wireModal(){
+      const modal = $('#modal');
+      $('#btnOpen')?.addEventListener('click', ()=> modal?.classList.add('show'));
+      $('#btnCloseModal')?.addEventListener('click', ()=> modal?.classList.remove('show'));
+      $('#btnSaveScore')?.addEventListener('click', ()=> modal?.classList.remove('show'));
     }
 
     async function init(){
       await ensureAuth();
       setText('code', CODE||'----');
+      wireModal();
 
-      const modal=$('modal');
-      const btnOpen=$('btnOpen');
-      const btnSave=$('btnSaveScore');
-      const scoreInput=$('scoreInput');
-      let nbScr=0, players=[], lastTotals=[];
-
-      btnOpen.onclick=()=>modal.classList.add('show');
-      btnSave.onclick=()=>{
-        modal.classList.remove('show');
-        nbScr++;
-        btnOpen.disabled=true;
-        if(nbScr >= players.length){
-          nbScr=0;
-          console.log('Tous les joueurs ont validé leur score. Validation du tour...');
-          // Placeholder validation logic
-          btnOpen.disabled=false;
-        }
-      };
-
+      // Ecoute soiree (noms / brasseur)
       onSnapshot(doc(db,'soirees',CODE), s=>{
         if(!s.exists()) return;
-        const d=s.data();
-        players=d.players||[];
-        setText('dealerName', d.leaderName||'—');
+        const d = s.data();
+        state.players = (d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+        setText('dealerName', d.leaderName || '—');
+        setText('swapInfo', (d.currentGame?.type==='dame_de_pique') ? 'Échange actif' : '—');
+        const isDealerDevice = d?.leaderDeviceId && d.leaderDeviceId === DEVICE_ID;
+        document.body.classList.toggle('dealer', !!isDealerDevice);
+        tryRender();
       });
 
-      onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
-        if(!s.exists()) return;
-        const g=s.data();
-        lastTotals=g.totals||[];
-        renderTotals(players,lastTotals);
-      });
+      // Ecoute jeu (round + totals)
+      if(GID){
+        onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
+          if(!s.exists()) return;
+          const g = s.data();
+          state.round = g.round || 1;
+          state.totals = g.totals || [];
+          tryRender();
+        });
+      }
     }
 
-    window.addEventListener('DOMContentLoaded',()=>{init();});
-  // == Hotfix v4.9.6: re-render totals on both snapshots ==
-try {
-  if (typeof window.__dpHotfixApplied === 'undefined') {
-    window.__dpHotfixApplied = true;
-    let __players = [];
-    let __lastTotals = [];
-    const safeRender = ()=>{ try { if (typeof renderTotals==='function') renderTotals(__players, __lastTotals); } catch(e){ console.warn('[hotfix render]', e); } };
-    // réécoutes légères (ne cassent pas les écoutes existantes)
-    onSnapshot(doc(db,'soirees',CODE), s=>{
-      if(!s.exists()) return;
-      const d = s.data();
-      __players = (d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-      safeRender();
+    window.addEventListener('DOMContentLoaded', ()=>{
+      ensureTotalsList();
+      init();
     });
-    onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
-      if(!s.exists()) return;
-      const g = s.data();
-      __lastTotals = g.totals||[];
-      if (typeof setText==='function') setText('round', String(g.round||1));
-      safeRender();
-    });
-  }
-} catch(e){ console.warn('[hotfix wires] failed', e); }
-</script>
+  </script>
 </body>
 </html>
