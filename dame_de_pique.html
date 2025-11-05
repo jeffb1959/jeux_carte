@@ -1,4 +1,4 @@
-<!-- Version: v4.10.0 (2025-11-05) -->
+<!-- Version: v4.9.1 (2025-11-05) -->
 <!-- Dame de Pique — Ajout logique nbScr et validation du tour -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -196,6 +196,65 @@
     }
 
     window.addEventListener('DOMContentLoaded',()=>{ensureTotalsBox();init();});
-  </script>
+  // PATCH v4.9.1 – modal activation + leader gating + nbScr
+// Variables de suivi (globales)
+window.nbScr = window.nbScr || 0;
+window.nbPlayers = window.nbPlayers || 0;
+
+function openModal(){ const m=document.getElementById('modal'); if(m) m.classList.add('show'); }
+function closeModal(){ const m=document.getElementById('modal'); if(m) m.classList.remove('show'); }
+
+// Active les boutons de la modale et désactive localement après validation
+window.addEventListener('DOMContentLoaded', ()=>{
+  const openBtn = document.getElementById('btnOpen');
+  const saveBtn = document.getElementById('btnSaveScore');
+  if(openBtn && !openBtn.__wired){ openBtn.__wired=true; openBtn.addEventListener('click', openModal); }
+  if(saveBtn && !saveBtn.__wired){ saveBtn.__wired=true; saveBtn.addEventListener('click', ()=>{
+      window.nbScr++;
+      closeModal();
+      const b=document.getElementById('btnOpen');
+      if(b) b.disabled = true; // désactive ce joueur localement
+      // Si tout le monde a validé, réinitialiser et tenter la finalisation
+      if(window.nbPlayers>0 && window.nbScr>=window.nbPlayers){
+        window.nbScr = 0;
+        if(typeof finalizeRound==='function'){ try{ finalizeRound(window.__lastGameState||{}); }catch(_){} }
+        // Réactive localement après un court délai si aucune logique distante ne s'en charge
+        setTimeout(()=>{ const bb=document.getElementById('btnOpen'); if(bb) bb.disabled=false; }, 800);
+      }
+  }); }
+});
+
+// Écoute légère pour garder en mémoire l'état de jeu et le nombre de joueurs
+try{
+  import('https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js').then(({getFirestore, doc, onSnapshot})=>{
+    // Récupération des paramètres existants dans la page
+    const qs = new URLSearchParams(location.search);
+    const CODE = (qs.get('code')||'').replace(/[^0-9]/g,'').slice(0,4);
+    const GID  = qs.get('gid');
+    // Réutilise l'instance Firestore déjà initialisée par la page
+    const db = window.__firebaseDb || window.db || getFirestore();
+    if(CODE){
+      onSnapshot(doc(db,'soirees',CODE), s=>{
+        if(!s.exists()) return;
+        const d=s.data();
+        window.nbPlayers = Array.isArray(d.players) ? d.players.length : 0;
+        // Gating du bouton par appareil brasseur (leader)
+        const DEVICE_ID = localStorage.getItem('deviceId');
+        const isLeaderDevice = d?.leaderDeviceId && DEVICE_ID && d.leaderDeviceId === DEVICE_ID;
+        const btn = document.getElementById('btnOpen');
+        if(btn) btn.disabled = !isLeaderDevice;
+        if(document && document.body && document.body.classList){ document.body.classList.toggle('dealer', !!isLeaderDevice); }
+      });
+    }
+    if(GID){
+      onSnapshot(doc(db,'scores_dame_de_pique',GID), s=>{
+        if(!s.exists()) return;
+        window.__lastGameState = s.data()||{};
+      });
+    }
+  }).catch(()=>{});
+}catch(_){}
+
+</script>
 </body>
 </html>
