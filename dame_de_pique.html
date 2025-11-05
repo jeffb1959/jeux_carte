@@ -1,4 +1,4 @@
-<!-- Version: v4.9.1 (2025-11-05) -->
+<!-- Version: v4.9.2 (2025-11-05) -->
 <!-- Dame de Pique — Ajout logique nbScr et validation du tour -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -255,6 +255,11 @@ try{
   }).catch(()=>{});
 }catch(_){}
 
+// Patch v4.9.2 — Tous les joueurs peuvent ouvrir la saisie : bouton toujours actif
+  window.addEventListener('load', ()=>{
+    const b = document.getElementById('btnOpen');
+    if (b) b.disabled = false;
+  });
 </script>
 </body>
 </html>
