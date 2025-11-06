@@ -1,5 +1,5 @@
-<!-- Version: v5.2.5 (2025-11-06) -->
-<!-- Dame de Pique — Version propre: ouverture modale fiable, validations, transactions Firestore, affichage live -->
+<!-- Version: v5.2.6 (2025-11-06) -->
+<!-- Dame de Pique — Version propre intégrant le patch: wiring sans inline, transactions Firestore, seed sûr, totaux robustes, Enter pour valider -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -77,7 +77,7 @@
         <div id="modalMsg" class="msg" style="margin-bottom:6px"></div>
         <div class="row">
           <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0–25" />
-          <button id="btnSaveScore" class="btn" onclick="window.__submitScoreOnce && window.__submitScoreOnce()">Valider</button>
+          <button id="btnSaveScore" class="btn" type="button">Valider</button>
         </div>
       </div>
     </div>
@@ -110,7 +110,7 @@
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } };
 
     // --- État local ---
-    const state={ players:[], totals:[], round:1, myIndex:-1, expected:0, submitted:0, roundScores:{} };
+    const state={ players:[], totals:[], round:1, myIndex:-1, expected:0, submitted:0, roundScores:{}, dealerName:'—' };
 
     function ensureTotalsBox(){
       let box=document.getElementById('totalsList');
@@ -123,23 +123,20 @@
       }
       return box;
     }
-    function renderTotals(players, totals, roundScores){
+    function renderTotals(){
       const box = ensureTotalsBox();
       box.innerHTML='';
-      (players||[]).forEach((p,i)=>{
-        const submitted = roundScores && Object.prototype.hasOwnProperty.call(roundScores, String(i));
+      (state.players||[]).forEach((p,i)=>{
+        const submitted = state.roundScores && Object.prototype.hasOwnProperty.call(state.roundScores, String(i));
         const name = (p?.name||'—') + (submitted? '<span style="color:var(--ok)"> ✔</span>':'' );
         const line=document.createElement('div');
         line.className='line';
-        line.innerHTML=`<div>${name}</div><div>${Number((totals||[])[i]||0)}</div>`;
+        line.innerHTML=`<div>${name}</div><div>${Number((state.totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
-    }
-    function tryRender(){
       setText('round', state.round);
-      renderTotals(state.players, state.totals, state.roundScores);
-      const status = (state.submitted||0) + '/' + (state.expected||0) + ' soumis';
-      setText('roundStatus', status);
+      setText('roundStatus', `${state.submitted||0}/${state.expected||0} soumis`);
+      setText('dealerName', state.dealerName||'—');
     }
 
     function showWarn(t){
@@ -155,7 +152,7 @@
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
-    // --- Ouverture modale + câblage boutons ---
+    // --- Modale & câblage ---
     window.__openScoreModal = ()=>{
       const modal=$('#modal');
       if(modal){
@@ -172,37 +169,6 @@
         }
       }
     };
-    window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
-
-    onReady(()=>{
-      // Câblage robuste sans inline handler
-      const btnOpen = document.getElementById('btnOpen');
-      if (btnOpen && !btnOpen.__wired) {
-        btnOpen.__wired = true;
-        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true });
-        // Accessibilité clavier
-        btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true });
-      }
-      const btnSave = document.getElementById('btnSaveScore');
-      if (btnSave && !btnSave.__wired) {
-        btnSave.__wired = true;
-        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true });
-      }
-      // Filet de sécurité: délégation sur le document
-      document.addEventListener('click', (e)=>{
-        const t = e.target;
-        if(!(t instanceof HTMLElement)) return;
-        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
-        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
-      }, { capture:true });
-    }); }
-      const btnSave=$('#btnSaveScore'); if(btnSave && !btnSave.__wired){ btnSave.__wired=true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true }); }
-      document.addEventListener('click', (e)=>{
-        const t = e.target; if(!(t instanceof HTMLElement)) return;
-        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
-        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
-      }, { capture:true });
-    });
 
     // --- Soumission du score (transactionnelle réelle) ---
     async function submitScoreOnce(){
@@ -237,7 +203,7 @@
               updates = { totals, round:(Number(g.round||1)+1), roundScores:{}, state:'in_progress' };
             }
           }
-          tx.set(ref, Object.assign({ round: g.round||1, totals: g.totals||Array(state.expected).fill(0) }, updates), { merge:true });
+          tx.set(ref, Object.assign({ round: g.round||1, totals: g.totals || Array(state.expected).fill(0) }, updates), { merge:true });
         });
         $('#modal')?.classList.remove('show');
         const inp=$('#scoreInput'); if(inp) inp.value='';
@@ -255,30 +221,24 @@
       if(CODE){
         onSnapshot(doc(db,'soirees',CODE), async s=>{
           if(!s.exists()) return;
-          const d=s.data();
+          const d=s.data()||{};
           const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
           state.players = players;
           state.myIndex = players.findIndex(p=> p && p.deviceId && p.deviceId===DEVICE_ID);
           state.expected = players.length;
-          setText('dealerName',d.leaderName||'—');
+          state.dealerName = d.leaderName || '—';
           setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
           document.body.classList.toggle('dealer', !!(d?.leaderDeviceId===DEVICE_ID));
-          tryRender();
-          if (GID && state.expected>0) {
+
+          // Seed seulement si le doc n'existe pas (pour ne pas écraser totals)
+          if(GID && state.expected>0){
             const ref = doc(db,'scores_dame_de_pique',GID);
-            // Ne seed que si le document N'EXISTE PAS pour ne pas écraser les totaux
             const exists = (await getDoc(ref)).exists();
-            if (!exists) {
-              await setDoc(ref, {
-                round: 1,
-                totals: Array(state.expected).fill(0),
-                roundScores: {},
-                expected: state.expected,
-                state: 'in_progress'
-              }, { merge:true });
+            if(!exists){
+              await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
             }
-          }, expected:state.expected, state:'in_progress' }, { merge:true });
           }
+          renderTotals();
         });
       }
 
@@ -287,15 +247,9 @@
         const ref = doc(db,'scores_dame_de_pique',GID);
         onSnapshot(ref, async s=>{
           if(!s.exists()){
-            if(state.expected>0){
-              const snap = await getDoc(ref);
-              if(!snap.exists()){
-                await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
-              }
-            }
-            return;
+            return; // seed déjà géré côté soiree si besoin
           }
-          const g=s.data();
+          const g=s.data()||{};
           state.round = g.round||1;
           // Supporte tableau OU map {"0":25,"1":25}
           let totals = g.totals;
@@ -306,24 +260,33 @@
           state.roundScores = g.roundScores||{};
           state.expected = g.expected || state.expected || 0;
           state.submitted = Object.keys(state.roundScores).length;
-          tryRender();
+          renderTotals();
         });
       }
     }
 
-    const DEBUG = (qs.get('debug')==='1');
-    if(DEBUG){
-      const foot = document.querySelector('.footer');
-      const dbg = document.createElement('div');
-      dbg.className='lbl';
-      dbg.id='dbg';
-      foot?.appendChild(dbg);
-      setInterval(()=>{
-        setHtml('dbg', `debug → code:${CODE||'-'} gid:${GID||'-'} idx:${state.myIndex} exp:${state.expected} sub:${state.submitted}`);
-      }, 600);
-    }
+    onReady(()=>{
+      // Câblage robuste sans inline
+      const btnOpen = $('#btnOpen');
+      if (btnOpen && !btnOpen.__wired) {
+        btnOpen.__wired = true;
+        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true });
+        btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true });
+      }
+      const btnSave = $('#btnSaveScore');
+      if (btnSave && !btnSave.__wired) {
+        btnSave.__wired = true;
+        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true });
+      }
+      // Délégation de sécurité
+      document.addEventListener('click', (e)=>{
+        const t = e.target; if(!(t instanceof HTMLElement)) return;
+        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
+        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
+      }, { capture:true });
 
-    onReady(()=>{ ensureTotalsBox(); init(); });
+      init();
+    });
   </script>
 </body>
 </html>
