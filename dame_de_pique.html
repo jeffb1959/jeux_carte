@@ -1,4 +1,4 @@
-<!-- Version: v5.2.4 (2025-11-06) -->
+<!-- Version: v5.2.5 (2025-11-06) -->
 <!-- Dame de Pique — Version propre: ouverture modale fiable, validations, transactions Firestore, affichage live -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -264,9 +264,20 @@
           setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
           document.body.classList.toggle('dealer', !!(d?.leaderDeviceId===DEVICE_ID));
           tryRender();
-          if(GID && state.expected>0){
+          if (GID && state.expected>0) {
             const ref = doc(db,'scores_dame_de_pique',GID);
-            await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+            // Ne seed que si le document N'EXISTE PAS pour ne pas écraser les totaux
+            const exists = (await getDoc(ref)).exists();
+            if (!exists) {
+              await setDoc(ref, {
+                round: 1,
+                totals: Array(state.expected).fill(0),
+                roundScores: {},
+                expected: state.expected,
+                state: 'in_progress'
+              }, { merge:true });
+            }
+          }, expected:state.expected, state:'in_progress' }, { merge:true });
           }
         });
       }
@@ -277,13 +288,21 @@
         onSnapshot(ref, async s=>{
           if(!s.exists()){
             if(state.expected>0){
-              await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+              const snap = await getDoc(ref);
+              if(!snap.exists()){
+                await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+              }
             }
             return;
           }
           const g=s.data();
           state.round = g.round||1;
-          state.totals = g.totals||[];
+          // Supporte tableau OU map {"0":25,"1":25}
+          let totals = g.totals;
+          if (totals && !Array.isArray(totals) && typeof totals === 'object') {
+            totals = Object.keys(totals).sort((a,b)=>Number(a)-Number(b)).map(k=>Number(totals[k]||0));
+          }
+          state.totals = Array.isArray(totals) ? totals : [];
           state.roundScores = g.roundScores||{};
           state.expected = g.expected || state.expected || 0;
           state.submitted = Object.keys(state.roundScores).length;
