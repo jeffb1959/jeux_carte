@@ -1,5 +1,5 @@
-<!-- Version: v5.0 (2025-11-05) -->
-<!-- Dame de Pique — Nettoyage de la gestion du bouton de score -->
+<!-- Version: v5.1 (2025-11-06) -->
+<!-- Dame de Pique — Refactor modèle de manche (roundScores par joueur + transaction) et fix bouton -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -26,6 +26,7 @@
     .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
     .name{font-size:clamp(15px,4vw,18px)}
     .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
+    .status{font-size:.9rem;color:var(--ok)}
     .footer{text-align:center;color:var(--muted)}
     .back{color:#9bb3d1;text-decoration:none}
     .back:hover{text-decoration:underline}
@@ -59,6 +60,7 @@
     <section class="card grid" id="totalsCard">
       <div class="lbl">Scores totaux</div>
       <div id="totalsList" class="grid"></div>
+      <div class="lbl status" id="roundStatus"></div>
       <div class="lbl">Soirée #<span id="code">----</span></div>
     </section>
 
@@ -80,22 +82,29 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, onSnapshot, updateDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+    import { getFirestore, doc, onSnapshot, runTransaction, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
+    // --- Firebase ---
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
+    // --- Paramètres URL ---
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
     const GID  = qs.get('gid');
 
+    // --- Appareil ---
     const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+ '_' + Math.random().toString(36).slice(2));
     localStorage.setItem('deviceId', DEVICE_ID);
 
+    // --- Helpers DOM ---
     const $ = (id)=>document.getElementById(id);
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+
+    // --- État local ---
+    const state={ players:[], totals:[], round:1, myIndex:-1, expected:0, submitted:0, roundScores:{} };
 
     function ensureTotalsBox(){
       let box=document.getElementById('totalsList');
@@ -109,91 +118,138 @@
       return box;
     }
 
-    function renderTotals(players, totals){
+    function renderTotals(players, totals, roundScores){
       const box = ensureTotalsBox();
       box.innerHTML='';
       (players||[]).forEach((p,i)=>{
+        const submitted = roundScores && Object.prototype.hasOwnProperty.call(roundScores, String(i));
+        const check = submitted ? ' ✔' : '';
+        const name = (p?.name||'—') + (submitted? '<span style="color:var(--ok)"> ✔</span>':'' );
         const line=document.createElement('div');
         line.className='line';
-        line.innerHTML=`<div>${p?.name||'—'}</div><div>${Number((totals||[])[i]||0)}</div>`;
+        line.innerHTML=`<div>${name}</div><div>${Number((totals||[])[i]||0)}</div>`;
         box.appendChild(line);
       });
     }
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
-
-    const state={ players:[], totals:[], round:1, nbScr:0 };
-
-    function tryRender(){ setText('round', state.round); renderTotals(state.players, state.totals); }
-
-    function showMsg(t){ $('#msg').textContent=t; setTimeout(()=>$('#msg').textContent='',4000); }
-
-    async function saveScore(){
-      const val=Number($('#scoreInput').value||0);
-      if(isNaN(val)) return;
-      const snap=await getDoc(doc(db,'scores_dame_de_pique',GID));
-      if(!snap.exists()) return;
-      const g=snap.data();
-      const nbScr=(g.nbScr||0)+1;
-      const scores=g.scores||[];
-      scores.push(val);
-      await updateDoc(doc(db,'scores_dame_de_pique',GID),{scores,nbScr});
-      $('#modal').classList.remove('show');
-      showMsg('Score enregistré.');
+    function tryRender(){
+      setText('round', state.round);
+      renderTotals(state.players, state.totals, state.roundScores);
+      const status = (state.submitted||0) + '/' + (state.expected||0) + ' soumis';
+      setText('roundStatus', status);
     }
 
-    async function validateIfComplete(){
-      const gSnap=await getDoc(doc(db,'scores_dame_de_pique',GID));
-      if(!gSnap.exists()) return;
-      const g=gSnap.data();
-      if((g.nbScr||0)>=(state.players.length||0)){
-        let total=(g.scores||[]).reduce((a,b)=>a+Number(b||0),0);
-        if(total!==25){
-          await updateDoc(doc(db,'scores_dame_de_pique',GID),{nbScr:0,scores:[]});
-          showMsg('Erreur : total ≠ 25, recommencez la saisie.');
-          return;
-        }
-        const newTotals=(state.totals||[]).map((t,i)=>t+Number(g.scores[i]||0));
-        await updateDoc(doc(db,'scores_dame_de_pique',GID),{totals:newTotals,round:(state.round||1)+1,nbScr:0,scores:[]});
-        showMsg('Tour validé !');
+    function showWarn(t){ const m=$('#msg'); if(!m) return; m.style.color='var(--warn)'; m.textContent=t; setTimeout(()=>{ if(m.textContent===t) m.textContent=''; }, 4000); }
+    function showOk(t){ const m=$('#msg'); if(!m) return; m.style.color='var(--ok)'; m.textContent=t; setTimeout(()=>{ if(m.textContent===t) m.textContent=''; }, 2500); }
+
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
+
+    // --- Ouverture modale (branchée très tôt pour éviter latence) ---
+    window.addEventListener('DOMContentLoaded', ()=>{
+      const modal=$('#modal');
+      $('#btnOpen')?.addEventListener('click',()=>{
+        if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
+        modal?.classList.add('show');
+      });
+      $('#btnSaveScore')?.addEventListener('click', submitScoreOnce);
+    });
+
+    // --- Soumission du score (transactionnelle) ---
+    async function submitScoreOnce(){
+      const valRaw = $('#scoreInput')?.value;
+      const val = Number(valRaw);
+      if(!Number.isFinite(val) || val<0 || val>25){ showWarn('Score invalide (0–25).'); return; }
+      if(state.myIndex<0){ showWarn('Appareil non associé à un joueur.'); return; }
+      const ref = doc(db,'scores_dame_de_pique',GID);
+      try{
+        await runTransaction(db, async (tx)=>{
+          const snap = await tx.get(ref);
+          if(!snap.exists()) throw new Error('Partie introuvable.');
+          const g = snap.data()||{};
+          const expected = Number(g.expected||state.expected||0);
+          const roundScores = Object.assign({}, g.roundScores||{});
+          const key = String(state.myIndex);
+          if(Object.prototype.hasOwnProperty.call(roundScores, key)){
+            throw new Error('Score déjà soumis pour ce joueur.');
+          }
+          roundScores[key] = val;
+          const submitted = Object.keys(roundScores).length;
+          // Calcul de somme si complété
+          let updates = { roundScores, expected: expected||state.expected||0 };
+          if(expected>0 && submitted===expected){
+            const sum = Object.values(roundScores).reduce((a,b)=>a+Number(b||0),0);
+            if(sum!==25){
+              // Réinitialiser la manche en cas d’erreur de total
+              updates = { roundScores:{}, state:'in_progress' };
+            }else{
+              // Valider la manche : accumulateur de totaux et next round
+              const totals = (g.totals||[]).slice();
+              const playersCount = Math.max(totals.length, expected);
+              for(let i=0;i<playersCount;i++){
+                const add = Number(roundScores[String(i)]||0);
+                totals[i] = Number(totals[i]||0) + add;
+              }
+              updates = { totals, round:(Number(g.round||1)+1), roundScores:{}, state:'in_progress' };
+            }
+          }
+          tx.update(ref, updates);
+        });
+        $('#modal')?.classList.remove('show');
+        $('#scoreInput').value='';
+        showOk('Score enregistré.');
+      }catch(err){
+        showWarn(err.message||'Erreur lors de la saisie.');
       }
     }
 
-    function wireModal(){
-      const modal=$('#modal');
-      $('#btnOpen')?.addEventListener('click',()=> modal.classList.add('show'));
-      $('#btnSaveScore')?.addEventListener('click',async()=>{await saveScore();await validateIfComplete();});
-    }
-
+    // --- Initialisation et écoutes ---
     async function init(){
       await ensureAuth();
       setText('code',CODE||'----');
-      wireModal();
 
-      onSnapshot(doc(db,'soirees',CODE),s=>{
-        if(!s.exists())return;
-        const d=s.data();
-        state.players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-        setText('dealerName',d.leaderName||'—');
-        setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
-        const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
-        document.body.classList.toggle('dealer',!!isDealerDevice);
-        tryRender();
-      });
-
-      if(GID){
-        onSnapshot(doc(db,'scores_dame_de_pique',GID),s=>{
-          if(!s.exists())return;
-          const g=s.data();
-          state.round=g.round||1;
-          state.totals=g.totals||[];
-          state.nbScr=g.nbScr||0;
+      // Soirée (joueurs + association appareil → index)
+      if(CODE){
+        onSnapshot(doc(db,'soirees',CODE), s=>{
+          if(!s.exists()) return;
+          const d=s.data();
+          const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+          state.players = players;
+          // Trouver mon index via deviceId
+          state.myIndex = players.findIndex(p=> p && p.deviceId && p.deviceId===DEVICE_ID);
+          state.expected = players.length;
+          setText('dealerName',d.leaderName||'—');
+          setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
+          const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
+          document.body.classList.toggle('dealer',!!isDealerDevice);
           tryRender();
         });
       }
+
+      // Document de score (round/totaux/manche en cours)
+      if(GID){
+        const ref = doc(db,'scores_dame_de_pique',GID);
+        onSnapshot(ref, async s=>{
+          if(!s.exists()){
+            // Filet de sécurité : initialiser le doc si absent
+            if(state.expected>0){
+              await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+            }
+            return;
+          }
+          const g=s.data();
+          state.round = g.round||1;
+          state.totals = g.totals||[];
+          state.roundScores = g.roundScores||{};
+          state.expected = g.expected || state.expected || 0;
+          state.submitted = Object.keys(state.roundScores).length;
+          tryRender();
+        });
+      } else {
+        showWarn('Paramètre manquant: gid');
+      }
     }
 
-    window.addEventListener('DOMContentLoaded',()=>{ensureTotalsBox();init();});
+    window.addEventListener('DOMContentLoaded',()=>{ ensureTotalsBox(); init(); });
   </script>
 </body>
 </html>
