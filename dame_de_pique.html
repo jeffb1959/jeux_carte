@@ -88,43 +88,26 @@
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
     import { getFirestore, doc, onSnapshot, runTransaction, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
-    // --- Firebase ---
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- Paramètres URL ---
     const qs = new URLSearchParams(location.search);
     const CODE = (qs.get('code')||'').replace(/\D/g,'').slice(0,4);
     const GID  = qs.get('gid');
 
-    // --- Appareil ---
     const DEVICE_ID = localStorage.getItem('deviceId') || (Date.now()+ '_' + Math.random().toString(36).slice(2));
     localStorage.setItem('deviceId', DEVICE_ID);
 
-    // --- Helpers DOM ---
     const $  = (id)=>document.getElementById(id);
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
-    const setHtml = (id, html)=>{ const el=$(id); if(el) el.innerHTML = html; };
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } };
 
-    // --- État local ---
     const state={ players:[], totals:[], round:1, myIndex:-1, expected:0, submitted:0, roundScores:{}, dealerName:'—' };
 
-    function ensureTotalsBox(){
-      let box=document.getElementById('totalsList');
-      if(!box){
-        const host=document.getElementById('totalsCard');
-        box=document.createElement('div');
-        box.id='totalsList';
-        box.className='grid';
-        host.appendChild(box);
-      }
-      return box;
-    }
     function renderTotals(){
-      const box = ensureTotalsBox();
+      const box = document.getElementById('totalsList');
       box.innerHTML='';
       (state.players||[]).forEach((p,i)=>{
         const submitted = state.roundScores && Object.prototype.hasOwnProperty.call(state.roundScores, String(i));
@@ -139,38 +122,22 @@
       setText('dealerName', state.dealerName||'—');
     }
 
-    function showWarn(t){
-      const m=$('#msg'); if(m){ m.style.color='var(--warn)'; m.textContent=t; }
-      const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--warn)'; mm.textContent=t; }
-      setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 4000);
-    }
-    function showOk(t){
-      const m=$('#msg'); if(m){ m.style.color='var(--ok)'; m.textContent=t; }
-      const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--ok)'; mm.textContent=t; }
-      setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 2500);
-    }
+    function showWarn(t){ const m=$('#msg'); if(m){ m.style.color='var(--warn)'; m.textContent=t; } setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; }, 4000); }
+    function showOk(t){ const m=$('#msg'); if(m){ m.style.color='var(--ok)'; m.textContent=t; } setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; }, 2500); }
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
-    // --- Modale & câblage ---
     window.__openScoreModal = ()=>{
       const modal=$('#modal');
       if(modal){
         modal.classList.add('show');
         const saveBtn = $('#btnSaveScore');
-        if(saveBtn && !saveBtn.__wired){
-          saveBtn.__wired = true;
-          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true });
-        }
+        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }); }
         const inp=$('#scoreInput');
-        if(inp && !inp.__wired){
-          inp.__wired = true;
-          inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
-        }
+        if(inp && !inp.__wired){ inp.__wired = true; inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }); }
       }
     };
 
-    // --- Soumission du score (transactionnelle réelle) ---
     async function submitScoreOnce(){
       if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
       const valRaw = $('#scoreInput')?.value ?? '';
@@ -183,9 +150,7 @@
           const snap = await tx.get(ref);
           const g = snap.exists() ? (snap.data()||{}) : { round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' };
           const key = String(state.myIndex);
-          if(Object.prototype.hasOwnProperty.call(g.roundScores||{}, key)){
-            throw new Error('Score déjà soumis pour ce joueur.');
-          }
+          if(Object.prototype.hasOwnProperty.call(g.roundScores||{}, key)) throw new Error('Score déjà soumis.');
           const roundScores = Object.assign({}, g.roundScores||{});
           roundScores[key] = val;
           const expected = Number(g.expected || state.expected || 0);
@@ -193,98 +158,37 @@
           let updates = { roundScores, expected: expected||state.expected||0 };
           if(expected>0 && submitted===expected){
             const sum = Object.values(roundScores).reduce((a,b)=>a+Number(b||0),0);
-            if(sum!==25){
-              updates = { roundScores:{}, state:'in_progress' };
-            }else{
+            if(sum!==25){ updates = { roundScores:{}, state:'in_progress' }; }
+            else{
               const totals = (g.totals||Array(expected).fill(0)).slice();
-              for(let i=0;i<expected;i++){
-                totals[i] = Number(totals[i]||0) + Number(roundScores[String(i)]||0);
-              }
+              for(let i=0;i<expected;i++){ totals[i] = Number(totals[i]||0) + Number(roundScores[String(i)]||0); }
               updates = { totals, round:(Number(g.round||1)+1), roundScores:{}, state:'in_progress' };
             }
           }
           tx.set(ref, Object.assign({ round: g.round||1, totals: g.totals || Array(state.expected).fill(0) }, updates), { merge:true });
         });
-        $('#modal')?.classList.remove('show');
-        const inp=$('#scoreInput'); if(inp) inp.value='';
-        showOk('Score enregistré.');
+        $('#modal')?.classList.remove('show'); const inp=$('#scoreInput'); if(inp) inp.value=''; showOk('Score enregistré.');
       }catch(err){ showWarn(err?.message||'Erreur lors de la saisie.'); }
     }
 
-    // --- Initialisation et écoutes ---
     async function init(){
-      await ensureAuth();
-      setText('code',CODE||'----');
-      if(!CODE || !GID){ const b=$('#paramBanner'); if(b) b.style.display='block'; }
-
-      // Soirée (joueurs + association appareil → index)
-      if(CODE){
-        onSnapshot(doc(db,'soirees',CODE), async s=>{
-          if(!s.exists()) return;
-          const d=s.data()||{};
-          const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-          state.players = players;
-          state.myIndex = players.findIndex(p=> p && p.deviceId && p.deviceId===DEVICE_ID);
-          state.expected = players.length;
-          state.dealerName = d.leaderName || '—';
-          setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
-          document.body.classList.toggle('dealer', !!(d?.leaderDeviceId===DEVICE_ID));
-
-          // Seed seulement si le doc n'existe pas (pour ne pas écraser totals)
-          if(GID && state.expected>0){
-            const ref = doc(db,'scores_dame_de_pique',GID);
-            const exists = (await getDoc(ref)).exists();
-            if(!exists){
-              await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
-            }
-          }
-          renderTotals();
-        });
-      }
-
-      // Document de score (round/totaux/manche en cours)
-      if(GID){
-        const ref = doc(db,'scores_dame_de_pique',GID);
-        onSnapshot(ref, async s=>{
-          if(!s.exists()){
-            return; // seed déjà géré côté soiree si besoin
-          }
-          const g=s.data()||{};
-          state.round = g.round||1;
-          // Supporte tableau OU map {"0":25,"1":25}
-          let totals = g.totals;
-          if (totals && !Array.isArray(totals) && typeof totals === 'object') {
-            totals = Object.keys(totals).sort((a,b)=>Number(a)-Number(b)).map(k=>Number(totals[k]||0));
-          }
-          state.totals = Array.isArray(totals) ? totals : [];
-          state.roundScores = g.roundScores||{};
-          state.expected = g.expected || state.expected || 0;
-          state.submitted = Object.keys(state.roundScores).length;
-          renderTotals();
-        });
-      }
+      await ensureAuth(); setText('code',CODE||'----'); if(!CODE || !GID){ const b=$('#paramBanner'); if(b) b.style.display='block'; }
+      if(CODE){ onSnapshot(doc(db,'soirees',CODE), async s=>{
+        if(!s.exists()) return; const d=s.data()||{}; const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+        state.players = players; state.myIndex = players.findIndex(p=> p && p.deviceId && p.deviceId===DEVICE_ID);
+        state.expected = players.length; state.dealerName = d.leaderName || '—';
+        if(GID && state.expected>0){ const ref = doc(db,'scores_dame_de_pique',GID); const exists = (await getDoc(ref)).exists(); if(!exists){ await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true }); } }
+        renderTotals(); }); }
+      if(GID){ const ref = doc(db,'scores_dame_de_pique',GID); onSnapshot(ref, async s=>{
+        if(!s.exists()) return; const g=s.data()||{}; state.round = g.round||1; let totals = g.totals;
+        if (totals && !Array.isArray(totals) && typeof totals === 'object') totals = Object.keys(totals).sort((a,b)=>Number(a)-Number(b)).map(k=>Number(totals[k]||0));
+        state.totals = Array.isArray(totals)?totals:[]; state.roundScores = g.roundScores||{}; state.expected = g.expected || state.expected || 0; state.submitted = Object.keys(state.roundScores).length; renderTotals(); }); }
     }
 
     onReady(()=>{
-      // Câblage robuste sans inline
-      const btnOpen = $('#btnOpen');
-      if (btnOpen && !btnOpen.__wired) {
-        btnOpen.__wired = true;
-        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true });
-        btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true });
-      }
-      const btnSave = $('#btnSaveScore');
-      if (btnSave && !btnSave.__wired) {
-        btnSave.__wired = true;
-        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true });
-      }
-      // Délégation de sécurité
-      document.addEventListener('click', (e)=>{
-        const t = e.target; if(!(t instanceof HTMLElement)) return;
-        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
-        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
-      }, { capture:true });
-
+      const btnOpen = $('#btnOpen'); if (btnOpen && !btnOpen.__wired) { btnOpen.__wired = true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }); btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }); }
+      const btnSave = $('#btnSaveScore'); if (btnSave && !btnSave.__wired) { btnSave.__wired = true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
+      document.addEventListener('click', (e)=>{ const t=e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } });
       init();
     });
   </script>
