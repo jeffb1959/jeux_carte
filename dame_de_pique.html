@@ -1,5 +1,5 @@
-<!-- Version: v5.2.1 (2025-11-06) -->
-<!-- Dame de Pique — Stable: boutons fiables, roundScores par joueur, transactions Firestore, messages clairs -->
+<!-- Version: v5.2.2 (2025-11-06) -->
+<!-- Dame de Pique — Fichier propre : boutons fiables, transactions Firestore réelles, validations et affichage OK -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -56,7 +56,7 @@
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn" data-wire="direct" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
+      <button id="btnOpen" class="btn" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -76,7 +76,7 @@
         <h3>Saisir mon score</h3>
         <div id="modalMsg" class="msg" style="margin-bottom:6px"></div>
         <div class="row">
-          <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
+          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0-25" />
           <button id="btnSaveScore" class="btn" onclick="window.__submitScoreOnce && window.__submitScoreOnce()">Valider</button>
         </div>
       </div>
@@ -86,7 +86,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, onSnapshot, runTransaction, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+    import { getFirestore, doc, onSnapshot, runTransaction, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
     // --- Firebase ---
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
@@ -153,9 +153,7 @@
       setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 2500);
     }
 
-    async function ensureAuth(){
-      try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); }
-    }
+    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
     // --- Fallbacks globaux pour les onclick inline ---
     window.__openScoreModal = ()=>{
@@ -171,45 +169,30 @@
     };
     window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
 
-    // --- Délégation de clic (filet de sécurité) ---
+    // --- Délégation + attache directe au chargement ---
     onReady(()=>{
-      console.log('Dame de Pique v5.2.1 init');
-      // 1) Liaison DIRECTE sur le bouton (prioritaire)
-      const btnOpen = document.getElementById('btnOpen');
-      if(btnOpen && !btnOpen.__wired){
-        btnOpen.__wired = true;
-        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); });
-      }
-      const btnSave = document.getElementById('btnSaveScore');
-      if(btnSave && !btnSave.__wired){
-        btnSave.__wired = true;
-        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); });
-      }
-
-      // 2) Filet de sécurité: délégation
+      const btnOpen=$('#btnOpen'); if(btnOpen && !btnOpen.__wired){ btnOpen.__wired=true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }); }
+      const btnSave=$('#btnSaveScore'); if(btnSave && !btnSave.__wired){ btnSave.__wired=true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
       document.addEventListener('click', (e)=>{
-        const t = e.target;
-        if(!(t instanceof HTMLElement)) return;
+        const t = e.target; if(!(t instanceof HTMLElement)) return;
         if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
         if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
       });
     });
-    });
 
-    // --- Soumission du score (transactionnelle) ---
+    // --- Soumission du score (transactionnelle réelle) ---
     async function submitScoreOnce(){
       if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
-      const valRaw = $('#scoreInput')?.value;
-      const val = Number(valRaw);
-      if(!Number.isFinite(val) || val<0 || val>25){ showWarn('Score invalide (0–25).'); return; }
+      const valRaw = $('#scoreInput')?.value ?? '';
+      const val = parseInt(String(valRaw).trim(), 10);
+      if(Number.isNaN(val) || val<0 || val>25){ showWarn('Score invalide (0-25).'); return; }
       if(state.myIndex<0){ showWarn('Appareil non associé à un joueur.'); return; }
       const ref = doc(db,'scores_dame_de_pique',GID);
       try{
         await runTransaction(db, async (tx)=>{
           const snap = await tx.get(ref);
-          if(!snap.exists()) throw new Error('Partie introuvable.');
-          const g = snap.data()||{};
-          const expected = Number(g.expected||state.expected||0);
+          let g = snap.exists() ? (snap.data()||{}) : {};
+          const expected = Number(g.expected || state.expected || 0);
           const roundScores = Object.assign({}, g.roundScores||{});
           const key = String(state.myIndex);
           if(Object.prototype.hasOwnProperty.call(roundScores, key)){
@@ -217,14 +200,14 @@
           }
           roundScores[key] = val;
           const submitted = Object.keys(roundScores).length;
-          let updates = { roundScores, expected: expected||state.expected||0 };
-          if(expected>0 && submitted===expected){
+          let updates = { roundScores, expected: expected || state.expected || 0 };
+          if((expected>0 ? expected : state.expected)>0 && submitted === (expected || state.expected)){
             const sum = Object.values(roundScores).reduce((a,b)=>a+Number(b||0),0);
             if(sum!==25){
               updates = { roundScores:{}, state:'in_progress' };
             }else{
               const totals = (g.totals||[]).slice();
-              const playersCount = Math.max(totals.length, expected);
+              const playersCount = Math.max(totals.length, (expected||state.expected||0));
               for(let i=0;i<playersCount;i++){
                 const add = Number(roundScores[String(i)]||0);
                 totals[i] = Number(totals[i]||0) + add;
@@ -232,14 +215,17 @@
               updates = { totals, round:(Number(g.round||1)+1), roundScores:{}, state:'in_progress' };
             }
           }
-          tx.update(ref, updates);
+          if(!snap.exists()){
+            updates = Object.assign({ round:1, totals:Array(state.expected||0).fill(0) }, updates);
+            tx.set(ref, updates, { merge:true });
+          } else {
+            tx.update(ref, updates);
+          }
         });
         $('#modal')?.classList.remove('show');
         const inp=$('#scoreInput'); if(inp) inp.value='';
         showOk('Score enregistré.');
-      }catch(err){
-        showWarn(err.message||'Erreur lors de la saisie.');
-      }
+      }catch(err){ showWarn(err?.message||'Erreur lors de la saisie.'); }
     }
 
     // --- Initialisation et écoutes ---
@@ -262,6 +248,7 @@
           const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
           document.body.classList.toggle('dealer',!!isDealerDevice);
           tryRender();
+
           // Initialise le doc de score si nécessaire
           if(GID && state.expected>0){
             const ref = doc(db,'scores_dame_de_pique',GID);
