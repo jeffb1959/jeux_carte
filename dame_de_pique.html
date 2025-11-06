@@ -1,4 +1,4 @@
-<!-- Version: v5.2.0 (2025-11-06) -->
+<!-- Version: v5.2.1 (2025-11-06) -->
 <!-- Dame de Pique — Stable: boutons fiables, roundScores par joueur, transactions Firestore, messages clairs -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -56,7 +56,7 @@
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
+      <button id="btnOpen" class="btn" data-wire="direct" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -173,12 +173,27 @@
 
     // --- Délégation de clic (filet de sécurité) ---
     onReady(()=>{
+      console.log('Dame de Pique v5.2.1 init');
+      // 1) Liaison DIRECTE sur le bouton (prioritaire)
+      const btnOpen = document.getElementById('btnOpen');
+      if(btnOpen && !btnOpen.__wired){
+        btnOpen.__wired = true;
+        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); });
+      }
+      const btnSave = document.getElementById('btnSaveScore');
+      if(btnSave && !btnSave.__wired){
+        btnSave.__wired = true;
+        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); });
+      }
+
+      // 2) Filet de sécurité: délégation
       document.addEventListener('click', (e)=>{
         const t = e.target;
         if(!(t instanceof HTMLElement)) return;
         if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
         if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
       });
+    });
     });
 
     // --- Soumission du score (transactionnelle) ---
