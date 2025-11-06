@@ -1,4 +1,4 @@
-<!-- Version: v5.1.1 (2025-11-06) -->
+<!-- Version: v5.1.2 (2025-11-06) -->
 <!-- Dame de Pique — Fix wiring boutons (ouverture modale sans gate), bannière si code/gid manquants, délégation de clic -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -58,7 +58,7 @@
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn">Inscrire le pointage</button>
+      <button id="btnOpen" class="btn" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -151,19 +151,26 @@
 
     // --- Délégation de clic (robuste) ---
     onReady(()=>{
+      // 1) Délégation de clic (robuste)
       document.addEventListener('click', (e)=>{
         const t = e.target;
         if(!(t instanceof HTMLElement)) return;
         if(t.id==='btnOpen'){
           e.preventDefault();
           const modal=$('#modal');
-          modal?.classList.add('show');
+          if(modal){ modal.classList.add('show'); }
         }
         if(t.id==='btnSaveScore'){
           e.preventDefault();
           submitScoreOnce();
         }
       }, { passive:false });
+
+      // 2) Fallback global direct (pour onclick inline)
+      window.__openScoreModal = ()=>{
+        const modal=document.getElementById('modal');
+        if(modal){ modal.classList.add('show'); }
+      };
     });
 
     // --- Soumission du score (transactionnelle) ---
