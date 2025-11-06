@@ -1,4 +1,4 @@
-<!-- Version: v5.2.6 (2025-11-06) -->
+<!-- Version: v5.2.8 (2025-11-06) -->
 <!-- Dame de Pique — Version propre intégrant le patch: wiring sans inline, transactions Firestore, seed sûr, totaux robustes, Enter pour valider -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -132,9 +132,9 @@
       if(modal){
         modal.classList.add('show');
         const saveBtn = $('#btnSaveScore');
-        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }); }
+        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true }); }); }
         const inp=$('#scoreInput');
-        if(inp && !inp.__wired){ inp.__wired = true; inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }); }
+        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); } }); }
       }
     };
 
@@ -186,9 +186,9 @@
     }
 
     onReady(()=>{
-      const btnOpen = $('#btnOpen'); if (btnOpen && !btnOpen.__wired) { btnOpen.__wired = true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }); btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }); }
+      const btnOpen = $('#btnOpen'); if (btnOpen && !btnOpen.__wired) { btnOpen.__wired = true; btnOpen.disabled = false; btnOpen.onclick = null; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true }); }
       const btnSave = $('#btnSaveScore'); if (btnSave && !btnSave.__wired) { btnSave.__wired = true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
-      document.addEventListener('click', (e)=>{ const t=e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } });
+      document.addEventListener('click', (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
       init();
     });
   </script>
