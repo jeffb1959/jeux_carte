@@ -1,5 +1,5 @@
-<!-- Version: v5.1.5 (2025-11-06) -->
-<!-- Dame de Pique — Fix syntaxe (accolades), wiring fiable des boutons, modèle de manche roundScores + transaction -->
+<!-- Version: v5.2.0 (2025-11-06) -->
+<!-- Dame de Pique — Stable: boutons fiables, roundScores par joueur, transactions Firestore, messages clairs -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -24,8 +24,6 @@
     .btn{appearance:none;border:none;cursor:pointer;width:100%;min-height:52px;padding:0 16px;border-radius:16px;font-size:clamp(17px,4vw,19px);font-weight:800;color:#0c111b;background:var(--accent)}
     .btn[disabled]{opacity:.6;filter:grayscale(.3);cursor:not-allowed}
     .line{display:flex;align-items:center;justify-content:space-between;background:#0f1a30;border:1px solid #243252;border-radius:12px;padding:10px 12px}
-    .name{font-size:clamp(15px,4vw,18px)}
-    .pts{font-size:clamp(22px,6vw,30px);font-variant-numeric:tabular-nums}
     .status{font-size:.9rem;color:var(--ok)}
     .footer{text-align:center;color:var(--muted)}
     .back{color:#9bb3d1;text-decoration:none}
@@ -75,8 +73,8 @@
 
     <div class="modal" id="modal">
       <div class="sheet">
-        <h3>Saisir mon score<\/h3>
-        <div id="modalMsg" class="msg" style="margin-bottom:6px"><\/div>
+        <h3>Saisir mon score</h3>
+        <div id="modalMsg" class="msg" style="margin-bottom:6px"></div>
         <div class="row">
           <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
           <button id="btnSaveScore" class="btn" onclick="window.__submitScoreOnce && window.__submitScoreOnce()">Valider</button>
@@ -88,7 +86,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, onSnapshot, runTransaction, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+    import { getFirestore, doc, onSnapshot, runTransaction, setDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
     // --- Firebase ---
     const firebaseConfig = { apiKey:'AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg', authDomain:'soireecartev2.firebaseapp.com', projectId:'soireecartev2' };
@@ -106,7 +104,7 @@
     localStorage.setItem('deviceId', DEVICE_ID);
 
     // --- Helpers DOM ---
-    const $ = (id)=>document.getElementById(id);
+    const $  = (id)=>document.getElementById(id);
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
     const setHtml = (id, html)=>{ const el=$(id); if(el) el.innerHTML = html; };
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } };
@@ -125,7 +123,6 @@
       }
       return box;
     }
-
     function renderTotals(players, totals, roundScores){
       const box = ensureTotalsBox();
       box.innerHTML='';
@@ -138,7 +135,6 @@
         box.appendChild(line);
       });
     }
-
     function tryRender(){
       setText('round', state.round);
       renderTotals(state.players, state.totals, state.roundScores);
@@ -146,46 +142,43 @@
       setText('roundStatus', status);
     }
 
-    function showWarn(t){ const m=$('#msg'); if(m){ m.style.color='var(--warn)'; m.textContent=t; }
+    function showWarn(t){
+      const m=$('#msg'); if(m){ m.style.color='var(--warn)'; m.textContent=t; }
       const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--warn)'; mm.textContent=t; }
       setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 4000);
-    }, 4000); }
-    function showOk(t){ const m=$('#msg'); if(m){ m.style.color='var(--ok)'; m.textContent=t; }
+    }
+    function showOk(t){
+      const m=$('#msg'); if(m){ m.style.color='var(--ok)'; m.textContent=t; }
       const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--ok)'; mm.textContent=t; }
       setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 2500);
-    }, 2500); }
+    }
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
+    async function ensureAuth(){
+      try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); }
+    }
 
     // --- Fallbacks globaux pour les onclick inline ---
     window.__openScoreModal = ()=>{
-      const modal=document.getElementById('modal');
+      const modal=$('#modal');
       if(modal){
         modal.classList.add('show');
-        // Attache directe à l'ouverture
-        const saveBtn = document.getElementById('btnSaveScore');
+        const saveBtn = $('#btnSaveScore');
         if(saveBtn && !saveBtn.__wired){
           saveBtn.__wired = true;
-          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { passive:false });
+          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); });
         }
       }
     };
     window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
 
-    // --- Délégation de clic (robuste) ---
+    // --- Délégation de clic (filet de sécurité) ---
     onReady(()=>{
       document.addEventListener('click', (e)=>{
         const t = e.target;
         if(!(t instanceof HTMLElement)) return;
-        if(t.id==='btnOpen'){
-          e.preventDefault();
-          window.__openScoreModal();
-        }
-        if(t.id==='btnSaveScore'){
-          e.preventDefault();
-          submitScoreOnce();
-        }
-      }, { passive:false });
+        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
+        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
+      });
     });
 
     // --- Soumission du score (transactionnelle) ---
@@ -226,7 +219,7 @@
           }
           tx.update(ref, updates);
         });
-        const modal=document.getElementById('modal'); if(modal) modal.classList.remove('show');
+        $('#modal')?.classList.remove('show');
         const inp=$('#scoreInput'); if(inp) inp.value='';
         showOk('Score enregistré.');
       }catch(err){
@@ -254,6 +247,7 @@
           const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
           document.body.classList.toggle('dealer',!!isDealerDevice);
           tryRender();
+          // Initialise le doc de score si nécessaire
           if(GID && state.expected>0){
             const ref = doc(db,'scores_dame_de_pique',GID);
             await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
@@ -265,7 +259,7 @@
       if(GID){
         const ref = doc(db,'scores_dame_de_pique',GID);
         onSnapshot(ref, async s=>{
-          if(!s.exists()) {
+          if(!s.exists()){
             if(state.expected>0){
               await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
             }
@@ -279,21 +273,11 @@
           state.submitted = Object.keys(state.roundScores).length;
           tryRender();
         });
-            }
-            return;
-          }
-          const g=s.data();
-          state.round = g.round||1;
-          state.totals = g.totals||[];
-          state.roundScores = g.roundScores||{};
-          state.expected = g.expected || state.expected || 0;
-          state.submitted = Object.keys(state.roundScores).length;
-          tryRender();
-        });
       }
     }
 
-    const DEBUG = (new URLSearchParams(location.search).get('debug')==='1');
+    // --- Debug optionnel ---
+    const DEBUG = (qs.get('debug')==='1');
     if(DEBUG){
       const foot = document.querySelector('.footer');
       const dbg = document.createElement('div');
@@ -304,6 +288,7 @@
         setHtml('dbg', `debug → code:${CODE||'-'} gid:${GID||'-'} idx:${state.myIndex} exp:${state.expected} sub:${state.submitted}`);
       }, 600);
     }
+
     onReady(()=>{ ensureTotalsBox(); init(); });
   </script>
 </body>
