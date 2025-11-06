@@ -1,5 +1,5 @@
-<!-- Version: v5.1.3 (2025-11-06) -->
-<!-- Dame de Pique — Fix wiring boutons (ouverture modale sans gate), bannière si code/gid manquants, délégation de clic -->
+<!-- Version: v5.1.4 (2025-11-06) -->
+<!-- Dame de Pique — Fix syntaxe (accolades), wiring fiable des boutons, modèle de manche roundScores + transaction -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -149,52 +149,35 @@
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
+    // --- Fallbacks globaux pour les onclick inline ---
+    window.__openScoreModal = ()=>{
+      const modal=document.getElementById('modal');
+      if(modal){
+        modal.classList.add('show');
+        // Attache directe à l'ouverture
+        const saveBtn = document.getElementById('btnSaveScore');
+        if(saveBtn && !saveBtn.__wired){
+          saveBtn.__wired = true;
+          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { passive:false });
+        }
+      }
+    };
+    window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
+
     // --- Délégation de clic (robuste) ---
     onReady(()=>{
-      // Délégation de clic (robuste)
       document.addEventListener('click', (e)=>{
         const t = e.target;
         if(!(t instanceof HTMLElement)) return;
         if(t.id==='btnOpen'){
           e.preventDefault();
-          const modal=$('#modal');
-          if(modal){
-            modal.classList.add('show');
-            // (1) Attache DIRECTEMENT le handler au bouton Valider à l'ouverture de la modale
-            const saveBtn = document.getElementById('btnSaveScore');
-            if(saveBtn && !saveBtn.__wired){
-              saveBtn.__wired = true;
-              saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { passive:false });
-            }
-          }
+          window.__openScoreModal();
         }
         if(t.id==='btnSaveScore'){
-          // garde-fou si délégation seule
           e.preventDefault();
           submitScoreOnce();
         }
       }, { passive:false });
-
-      // Fallbacks globaux pour les onclick inline
-      window.__openScoreModal = ()=>{
-        const modal=document.getElementById('modal');
-        if(modal){
-          modal.classList.add('show');
-          const saveBtn = document.getElementById('btnSaveScore');
-          if(saveBtn && !saveBtn.__wired){
-            saveBtn.__wired = true;
-            saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { passive:false });
-          }
-        }
-      };
-      window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
-    });
-
-      // 2) Fallback global direct (pour onclick inline)
-      window.__openScoreModal = ()=>{
-        const modal=document.getElementById('modal');
-        if(modal){ modal.classList.add('show'); }
-      };
     });
 
     // --- Soumission du score (transactionnelle) ---
@@ -235,7 +218,7 @@
           }
           tx.update(ref, updates);
         });
-        $('#modal')?.classList.remove('show');
+        const modal=document.getElementById('modal'); if(modal) modal.classList.remove('show');
         const inp=$('#scoreInput'); if(inp) inp.value='';
         showOk('Score enregistré.');
       }catch(err){
