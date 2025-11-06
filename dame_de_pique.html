@@ -1,4 +1,4 @@
-<!-- Version: v5.2.3 (2025-11-06) -->
+<!-- Version: v5.2.4 (2025-11-06) -->
 <!-- Dame de Pique — Version propre: ouverture modale fiable, validations, transactions Firestore, affichage live -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -56,7 +56,7 @@
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn" onclick="window.__openScoreModal && window.__openScoreModal()">Inscrire le pointage</button>
+      <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -175,7 +175,27 @@
     window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
 
     onReady(()=>{
-      const btnOpen=$('#btnOpen'); if(btnOpen && !btnOpen.__wired){ btnOpen.__wired=true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); }
+      // Câblage robuste sans inline handler
+      const btnOpen = document.getElementById('btnOpen');
+      if (btnOpen && !btnOpen.__wired) {
+        btnOpen.__wired = true;
+        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true });
+        // Accessibilité clavier
+        btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true });
+      }
+      const btnSave = document.getElementById('btnSaveScore');
+      if (btnSave && !btnSave.__wired) {
+        btnSave.__wired = true;
+        btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true });
+      }
+      // Filet de sécurité: délégation sur le document
+      document.addEventListener('click', (e)=>{
+        const t = e.target;
+        if(!(t instanceof HTMLElement)) return;
+        if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
+        if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
+      }, { capture:true });
+    }); }
       const btnSave=$('#btnSaveScore'); if(btnSave && !btnSave.__wired){ btnSave.__wired=true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true }); }
       document.addEventListener('click', (e)=>{
         const t = e.target; if(!(t instanceof HTMLElement)) return;
