@@ -1,5 +1,5 @@
-<!-- Version: v5.2.2 (2025-11-06) -->
-<!-- Dame de Pique — Fichier propre : boutons fiables, transactions Firestore réelles, validations et affichage OK -->
+<!-- Version: v5.2.3 (2025-11-06) -->
+<!-- Dame de Pique — Version propre: ouverture modale fiable, validations, transactions Firestore, affichage live -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -76,7 +76,7 @@
         <h3>Saisir mon score</h3>
         <div id="modalMsg" class="msg" style="margin-bottom:6px"></div>
         <div class="row">
-          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0-25" />
+          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0–25" />
           <button id="btnSaveScore" class="btn" onclick="window.__submitScoreOnce && window.__submitScoreOnce()">Valider</button>
         </div>
       </div>
@@ -155,7 +155,7 @@
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
-    // --- Fallbacks globaux pour les onclick inline ---
+    // --- Ouverture modale + câblage boutons ---
     window.__openScoreModal = ()=>{
       const modal=$('#modal');
       if(modal){
@@ -163,21 +163,25 @@
         const saveBtn = $('#btnSaveScore');
         if(saveBtn && !saveBtn.__wired){
           saveBtn.__wired = true;
-          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); });
+          saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true });
+        }
+        const inp=$('#scoreInput');
+        if(inp && !inp.__wired){
+          inp.__wired = true;
+          inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
         }
       }
     };
     window.__submitScoreOnce = ()=>{ submitScoreOnce(); };
 
-    // --- Délégation + attache directe au chargement ---
     onReady(()=>{
-      const btnOpen=$('#btnOpen'); if(btnOpen && !btnOpen.__wired){ btnOpen.__wired=true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }); }
-      const btnSave=$('#btnSaveScore'); if(btnSave && !btnSave.__wired){ btnSave.__wired=true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
+      const btnOpen=$('#btnOpen'); if(btnOpen && !btnOpen.__wired){ btnOpen.__wired=true; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); }
+      const btnSave=$('#btnSaveScore'); if(btnSave && !btnSave.__wired){ btnSave.__wired=true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }, { capture:true }); }
       document.addEventListener('click', (e)=>{
         const t = e.target; if(!(t instanceof HTMLElement)) return;
         if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); }
         if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); }
-      });
+      }, { capture:true });
     });
 
     // --- Soumission du score (transactionnelle réelle) ---
@@ -185,42 +189,35 @@
       if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
       const valRaw = $('#scoreInput')?.value ?? '';
       const val = parseInt(String(valRaw).trim(), 10);
-      if(Number.isNaN(val) || val<0 || val>25){ showWarn('Score invalide (0-25).'); return; }
+      if(Number.isNaN(val) || val<0 || val>25){ showWarn('Score invalide (0–25).'); return; }
       if(state.myIndex<0){ showWarn('Appareil non associé à un joueur.'); return; }
       const ref = doc(db,'scores_dame_de_pique',GID);
       try{
         await runTransaction(db, async (tx)=>{
           const snap = await tx.get(ref);
-          let g = snap.exists() ? (snap.data()||{}) : {};
-          const expected = Number(g.expected || state.expected || 0);
-          const roundScores = Object.assign({}, g.roundScores||{});
+          const g = snap.exists() ? (snap.data()||{}) : { round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' };
           const key = String(state.myIndex);
-          if(Object.prototype.hasOwnProperty.call(roundScores, key)){
+          if(Object.prototype.hasOwnProperty.call(g.roundScores||{}, key)){
             throw new Error('Score déjà soumis pour ce joueur.');
           }
+          const roundScores = Object.assign({}, g.roundScores||{});
           roundScores[key] = val;
+          const expected = Number(g.expected || state.expected || 0);
           const submitted = Object.keys(roundScores).length;
-          let updates = { roundScores, expected: expected || state.expected || 0 };
-          if((expected>0 ? expected : state.expected)>0 && submitted === (expected || state.expected)){
+          let updates = { roundScores, expected: expected||state.expected||0 };
+          if(expected>0 && submitted===expected){
             const sum = Object.values(roundScores).reduce((a,b)=>a+Number(b||0),0);
             if(sum!==25){
               updates = { roundScores:{}, state:'in_progress' };
             }else{
-              const totals = (g.totals||[]).slice();
-              const playersCount = Math.max(totals.length, (expected||state.expected||0));
-              for(let i=0;i<playersCount;i++){
-                const add = Number(roundScores[String(i)]||0);
-                totals[i] = Number(totals[i]||0) + add;
+              const totals = (g.totals||Array(expected).fill(0)).slice();
+              for(let i=0;i<expected;i++){
+                totals[i] = Number(totals[i]||0) + Number(roundScores[String(i)]||0);
               }
               updates = { totals, round:(Number(g.round||1)+1), roundScores:{}, state:'in_progress' };
             }
           }
-          if(!snap.exists()){
-            updates = Object.assign({ round:1, totals:Array(state.expected||0).fill(0) }, updates);
-            tx.set(ref, updates, { merge:true });
-          } else {
-            tx.update(ref, updates);
-          }
+          tx.set(ref, Object.assign({ round: g.round||1, totals: g.totals||Array(state.expected).fill(0) }, updates), { merge:true });
         });
         $('#modal')?.classList.remove('show');
         const inp=$('#scoreInput'); if(inp) inp.value='';
@@ -245,11 +242,8 @@
           state.expected = players.length;
           setText('dealerName',d.leaderName||'—');
           setText('swapInfo',(d.currentGame?.type==='dame_de_pique')?'Échange actif':'—');
-          const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
-          document.body.classList.toggle('dealer',!!isDealerDevice);
+          document.body.classList.toggle('dealer', !!(d?.leaderDeviceId===DEVICE_ID));
           tryRender();
-
-          // Initialise le doc de score si nécessaire
           if(GID && state.expected>0){
             const ref = doc(db,'scores_dame_de_pique',GID);
             await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
@@ -278,7 +272,6 @@
       }
     }
 
-    // --- Debug optionnel ---
     const DEBUG = (qs.get('debug')==='1');
     if(DEBUG){
       const foot = document.querySelector('.footer');
