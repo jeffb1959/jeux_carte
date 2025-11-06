@@ -1,5 +1,5 @@
-<!-- Version: v5.1 (2025-11-06) -->
-<!-- Dame de Pique — Refactor modèle de manche (roundScores par joueur + transaction) et fix bouton -->
+<!-- Version: v5.1.1 (2025-11-06) -->
+<!-- Dame de Pique — Fix wiring boutons (ouverture modale sans gate), bannière si code/gid manquants, délégation de clic -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -30,13 +30,14 @@
     .footer{text-align:center;color:var(--muted)}
     .back{color:#9bb3d1;text-decoration:none}
     .back:hover{text-decoration:underline}
-    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:50}
     .modal.show{display:grid}
     .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
     .sheet h3{margin:0 0 8px}
     .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
     .row{display:grid;gap:8px}
     .msg{color:var(--warn);font-size:0.9rem;text-align:center}
+    .banner{width:100%;background:#3a1a1a;border:1px solid #6a2a2a;color:#ffdada;border-radius:12px;padding:10px 12px}
   </style>
 </head>
 <body>
@@ -45,6 +46,10 @@
       <h1>Dame De Pique</h1>
       <div class="lbl">Tour n° <span id="round">1</span></div>
     </header>
+
+    <div id="paramBanner" class="banner" style="display:none">
+      Paramètres manquants dans l’URL. Ouvrez cette page via la sélection de jeu (code & gid requis).
+    </div>
 
     <div class="brasseur">
       <div>Brasseur : <span id="dealerName" class="brName">—</span></div>
@@ -102,6 +107,7 @@
     // --- Helpers DOM ---
     const $ = (id)=>document.getElementById(id);
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+    const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } };
 
     // --- État local ---
     const state={ players:[], totals:[], round:1, myIndex:-1, expected:0, submitted:0, roundScores:{} };
@@ -123,7 +129,6 @@
       box.innerHTML='';
       (players||[]).forEach((p,i)=>{
         const submitted = roundScores && Object.prototype.hasOwnProperty.call(roundScores, String(i));
-        const check = submitted ? ' ✔' : '';
         const name = (p?.name||'—') + (submitted? '<span style="color:var(--ok)"> ✔</span>':'' );
         const line=document.createElement('div');
         line.className='line';
@@ -144,18 +149,26 @@
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
-    // --- Ouverture modale (branchée très tôt pour éviter latence) ---
-    window.addEventListener('DOMContentLoaded', ()=>{
-      const modal=$('#modal');
-      $('#btnOpen')?.addEventListener('click',()=>{
-        if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
-        modal?.classList.add('show');
-      });
-      $('#btnSaveScore')?.addEventListener('click', submitScoreOnce);
+    // --- Délégation de clic (robuste) ---
+    onReady(()=>{
+      document.addEventListener('click', (e)=>{
+        const t = e.target;
+        if(!(t instanceof HTMLElement)) return;
+        if(t.id==='btnOpen'){
+          e.preventDefault();
+          const modal=$('#modal');
+          modal?.classList.add('show');
+        }
+        if(t.id==='btnSaveScore'){
+          e.preventDefault();
+          submitScoreOnce();
+        }
+      }, { passive:false });
     });
 
     // --- Soumission du score (transactionnelle) ---
     async function submitScoreOnce(){
+      if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
       const valRaw = $('#scoreInput')?.value;
       const val = Number(valRaw);
       if(!Number.isFinite(val) || val<0 || val>25){ showWarn('Score invalide (0–25).'); return; }
@@ -174,15 +187,12 @@
           }
           roundScores[key] = val;
           const submitted = Object.keys(roundScores).length;
-          // Calcul de somme si complété
           let updates = { roundScores, expected: expected||state.expected||0 };
           if(expected>0 && submitted===expected){
             const sum = Object.values(roundScores).reduce((a,b)=>a+Number(b||0),0);
             if(sum!==25){
-              // Réinitialiser la manche en cas d’erreur de total
               updates = { roundScores:{}, state:'in_progress' };
             }else{
-              // Valider la manche : accumulateur de totaux et next round
               const totals = (g.totals||[]).slice();
               const playersCount = Math.max(totals.length, expected);
               for(let i=0;i<playersCount;i++){
@@ -195,7 +205,7 @@
           tx.update(ref, updates);
         });
         $('#modal')?.classList.remove('show');
-        $('#scoreInput').value='';
+        const inp=$('#scoreInput'); if(inp) inp.value='';
         showOk('Score enregistré.');
       }catch(err){
         showWarn(err.message||'Erreur lors de la saisie.');
@@ -206,6 +216,7 @@
     async function init(){
       await ensureAuth();
       setText('code',CODE||'----');
+      if(!CODE || !GID){ const b=$('#paramBanner'); if(b) b.style.display='block'; }
 
       // Soirée (joueurs + association appareil → index)
       if(CODE){
@@ -214,7 +225,6 @@
           const d=s.data();
           const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
           state.players = players;
-          // Trouver mon index via deviceId
           state.myIndex = players.findIndex(p=> p && p.deviceId && p.deviceId===DEVICE_ID);
           state.expected = players.length;
           setText('dealerName',d.leaderName||'—');
@@ -230,7 +240,6 @@
         const ref = doc(db,'scores_dame_de_pique',GID);
         onSnapshot(ref, async s=>{
           if(!s.exists()){
-            // Filet de sécurité : initialiser le doc si absent
             if(state.expected>0){
               await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
             }
@@ -244,12 +253,10 @@
           state.submitted = Object.keys(state.roundScores).length;
           tryRender();
         });
-      } else {
-        showWarn('Paramètre manquant: gid');
       }
     }
 
-    window.addEventListener('DOMContentLoaded',()=>{ ensureTotalsBox(); init(); });
+    onReady(()=>{ ensureTotalsBox(); init(); });
   </script>
 </body>
 </html>
