@@ -134,7 +134,7 @@
         const saveBtn = $('#btnSaveScore');
         if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true }); }
         const inp=$('#scoreInput');
-        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); } }); }
+        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); }
       }
     };
 
@@ -194,4 +194,5 @@
   </script>
 </body>
 </html>
+
 
