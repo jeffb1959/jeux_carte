@@ -56,7 +56,7 @@ v<!-- Version: v5.2.8 (2025-11-06) -->
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
+      <button id="openBtn" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -186,9 +186,9 @@ v<!-- Version: v5.2.8 (2025-11-06) -->
     }
 
     onReady(()=>{
-      const btnOpen = $('#btnOpen'); if (btnOpen && !btnOpen.__wired) { btnOpen.__wired = true; btnOpen.disabled = false; btnOpen.onclick = null; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true }); }
+      const openBtn = $('#openBtn'); if (openBtn && !openBtn.__wired) { openBtn.__wired = true; openBtn.disabled = false; openBtn.onclick = null; openBtn.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); openBtn.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true }); }
       const btnSave = $('#btnSaveScore'); if (btnSave && !btnSave.__wired) { btnSave.__wired = true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
-      document.addEventListener('click', (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
+      document.addEventListener('click', (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='openBtn'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
       init();
     });
   </script>
