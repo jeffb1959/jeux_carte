@@ -1,4 +1,4 @@
-<!-- Version: v5.2.8 (2025-11-06) -->
+v<!-- Version: v5.2.8 (2025-11-06) -->
 <!-- Dame de Pique — Version propre intégrant le patch: wiring sans inline, transactions Firestore, seed sûr, totaux robustes, Enter pour valider -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -132,9 +132,9 @@
       if(modal){
         modal.classList.add('show');
         const saveBtn = $('#btnSaveScore');
-        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true }); }
+        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true }); }); }
         const inp=$('#scoreInput');
-        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); }
+        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); } }); }
       }
     };
 
@@ -194,5 +194,3 @@
   </script>
 </body>
 </html>
-
-
