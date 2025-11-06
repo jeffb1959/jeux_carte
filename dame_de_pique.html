@@ -1,4 +1,4 @@
-<!-- Version: v5.1.4 (2025-11-06) -->
+<!-- Version: v5.1.5 (2025-11-06) -->
 <!-- Dame de Pique — Fix syntaxe (accolades), wiring fiable des boutons, modèle de manche roundScores + transaction -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -75,7 +75,8 @@
 
     <div class="modal" id="modal">
       <div class="sheet">
-        <h3>Saisir mon score</h3>
+        <h3>Saisir mon score<\/h3>
+        <div id="modalMsg" class="msg" style="margin-bottom:6px"><\/div>
         <div class="row">
           <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
           <button id="btnSaveScore" class="btn" onclick="window.__submitScoreOnce && window.__submitScoreOnce()">Valider</button>
@@ -107,6 +108,7 @@
     // --- Helpers DOM ---
     const $ = (id)=>document.getElementById(id);
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+    const setHtml = (id, html)=>{ const el=$(id); if(el) el.innerHTML = html; };
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn); } else { fn(); } };
 
     // --- État local ---
@@ -144,8 +146,14 @@
       setText('roundStatus', status);
     }
 
-    function showWarn(t){ const m=$('#msg'); if(!m) return; m.style.color='var(--warn)'; m.textContent=t; setTimeout(()=>{ if(m.textContent===t) m.textContent=''; }, 4000); }
-    function showOk(t){ const m=$('#msg'); if(!m) return; m.style.color='var(--ok)'; m.textContent=t; setTimeout(()=>{ if(m.textContent===t) m.textContent=''; }, 2500); }
+    function showWarn(t){ const m=$('#msg'); if(m){ m.style.color='var(--warn)'; m.textContent=t; }
+      const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--warn)'; mm.textContent=t; }
+      setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 4000);
+    }, 4000); }
+    function showOk(t){ const m=$('#msg'); if(m){ m.style.color='var(--ok)'; m.textContent=t; }
+      const mm=$('#modalMsg'); if(mm){ mm.style.color='var(--ok)'; mm.textContent=t; }
+      setTimeout(()=>{ if(m && m.textContent===t) m.textContent=''; if(mm && mm.textContent===t) mm.textContent=''; }, 2500);
+    }, 2500); }
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
@@ -234,7 +242,7 @@
 
       // Soirée (joueurs + association appareil → index)
       if(CODE){
-        onSnapshot(doc(db,'soirees',CODE), s=>{
+        onSnapshot(doc(db,'soirees',CODE), async s=>{
           if(!s.exists()) return;
           const d=s.data();
           const players=(d.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
@@ -246,6 +254,10 @@
           const isDealerDevice=d?.leaderDeviceId&&d.leaderDeviceId===DEVICE_ID;
           document.body.classList.toggle('dealer',!!isDealerDevice);
           tryRender();
+          if(GID && state.expected>0){
+            const ref = doc(db,'scores_dame_de_pique',GID);
+            await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+          }
         });
       }
 
@@ -253,9 +265,20 @@
       if(GID){
         const ref = doc(db,'scores_dame_de_pique',GID);
         onSnapshot(ref, async s=>{
-          if(!s.exists()){
+          if(!s.exists()) {
             if(state.expected>0){
               await setDoc(ref,{ round:1, totals:Array(state.expected).fill(0), roundScores:{}, expected:state.expected, state:'in_progress' }, { merge:true });
+            }
+            return;
+          }
+          const g=s.data();
+          state.round = g.round||1;
+          state.totals = g.totals||[];
+          state.roundScores = g.roundScores||{};
+          state.expected = g.expected || state.expected || 0;
+          state.submitted = Object.keys(state.roundScores).length;
+          tryRender();
+        });
             }
             return;
           }
@@ -270,6 +293,17 @@
       }
     }
 
+    const DEBUG = (new URLSearchParams(location.search).get('debug')==='1');
+    if(DEBUG){
+      const foot = document.querySelector('.footer');
+      const dbg = document.createElement('div');
+      dbg.className='lbl';
+      dbg.id='dbg';
+      foot?.appendChild(dbg);
+      setInterval(()=>{
+        setHtml('dbg', `debug → code:${CODE||'-'} gid:${GID||'-'} idx:${state.myIndex} exp:${state.expected} sub:${state.submitted}`);
+      }, 600);
+    }
     onReady(()=>{ ensureTotalsBox(); init(); });
   </script>
 </body>
