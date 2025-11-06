@@ -56,7 +56,7 @@ v<!-- Version: v5.2.8 (2025-11-06) -->
 
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="openBtn" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
+      <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
       <div id="msg" class="msg"></div>
     </section>
 
@@ -127,16 +127,35 @@ v<!-- Version: v5.2.8 (2025-11-06) -->
 
     async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth error',e); } }
 
-    window.__openScoreModal = ()=>{
-      const modal=$('#modal');
-      if(modal){
-        modal.classList.add('show');
-        const saveBtn = $('#btnSaveScore');
-        if(saveBtn && !saveBtn.__wired){ saveBtn.__wired = true; saveBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); submitScoreOnce(); }, { capture:true }); }
-        const inp=$('#scoreInput');
-        if(inp && !inp.__wired){ inp.__wired = true; inp.setAttribute('inputmode','numeric'); inp.setAttribute('pattern','[0-9]*'); inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true }); }
+window.__openScoreModal = ()=>{
+  const modal = $('#modal');
+  if (!modal) return;
+
+  modal.classList.add('show');
+
+  const saveBtn = $('#btnSaveScore');
+  if (saveBtn && !saveBtn.__wired) {
+    saveBtn.__wired = true;
+    saveBtn.addEventListener('click', (ev)=>{
+      ev.preventDefault();
+      submitScoreOnce();
+    }, { capture:true });
+  }
+
+  const inp = $('#scoreInput');
+  if (inp && !inp.__wired) {
+    inp.__wired = true;
+    inp.setAttribute('inputmode','numeric');
+    inp.setAttribute('pattern','[0-9]*');
+    inp.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitScoreOnce();
       }
-    };
+    }, { capture:true });
+  }
+};
+
 
     async function submitScoreOnce(){
       if(!CODE||!GID){ showWarn('Paramètres manquants (code/gid).'); return; }
@@ -186,9 +205,9 @@ v<!-- Version: v5.2.8 (2025-11-06) -->
     }
 
     onReady(()=>{
-      const openBtn = $('#openBtn'); if (openBtn && !openBtn.__wired) { openBtn.__wired = true; openBtn.disabled = false; openBtn.onclick = null; openBtn.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); openBtn.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true }); }
+      const btnOpen = $('#btnOpen'); if (btnOpen && !btnOpen.__wired) { btnOpen.__wired = true; btnOpen.disabled = false; btnOpen.onclick = null; btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, { capture:true }); btnOpen.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); window.__openScoreModal(); } }, { capture:true }); }
       const btnSave = $('#btnSaveScore'); if (btnSave && !btnSave.__wired) { btnSave.__wired = true; btnSave.addEventListener('click', (e)=>{ e.preventDefault(); submitScoreOnce(); }); }
-      document.addEventListener('click', (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='openBtn'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
+      document.addEventListener('click', (e)=>{ const t = e.target; if(!(t instanceof HTMLElement)) return; if(t.id==='btnOpen'){ e.preventDefault(); window.__openScoreModal(); } if(t.id==='btnSaveScore'){ e.preventDefault(); submitScoreOnce(); } }, { capture:true });
       init();
     });
   </script>
