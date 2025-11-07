@@ -1,10 +1,10 @@
-<!-- Dame de Pique — v6.4.0 (Finitions: messages, synchro, garde-fous) -->
+<!-- Dame de Pique — v6.5.0 (Branche) | Modif: masquer statusBar, whoCard, diag -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App</title>
+  <title>Dame de Pique — App (v6.5.0)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -33,13 +33,23 @@
     .danger{color:var(--danger)}
     .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .passTag{margin-left:auto;background:#14223f;border:1px solid #2b3e69;border-radius:10px;padding:6px 10px;font-size:.9rem}
-    details.diag{border:1px dashed #2b3e69;border-radius:12px;padding:8px}
-    details.diag>summary{cursor:pointer;color:#9bb3d1}
     .ok{color:var(--ok)}
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
     .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
-    .hidden{display:none!important}
+    /* Status bar + toasts */
+    .status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .dot{inline-size:10px;block-size:10px;border-radius:999px;display:inline-block}
+    .dot.ok{background:#22c55e}
+    .dot.wait{background:#f59e0b}
+    .dot.off{background:#ef4444}
+    .muted{color:#9bb3d1;font-size:.9rem}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:var(--text);padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:none}
+    .toast.show{display:block}
+    .toast.err{border-color:#7f1d1d}
+
+    /* 🔒 Masquage imposé (v6.5.0): statusBar, whoCard, diag */
+    #statusBar, #whoCard, details.diag { display:none !important; }
   </style>
 </head>
 <body>
@@ -49,29 +59,429 @@
       <div class="meta metaRow">
         <div class="lbl">Brasseur : <strong id="dealerName">—</strong></div>
         <div class="lbl">Tour n° <span id="round">1</span></div>
-        <div id="passInfo" class="passTag">—</div>
+        <div id="passInfo" class="passTag" title="Règle d'échange du tour">—</div>
       </div>
     </header>
+
+    <!-- Barre de statut (synchro, en ligne, x/y)  ➜ masquée en v6.5.0 via CSS -->
+    <section class="card status" id="statusBar" aria-live="polite">
+      <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait" title="État de synchronisation"></span>
+      <span id="syncText" class="muted">En attente…</span>
+      <span class="muted" style="margin-left:auto">Soumis: <span id="statusSubmitted">0/0</span></span>
+      <span class="muted">Réseau:</span> <span id="netDot" class="dot off" title="État réseau"></span>
+    </section>
+
+    <!-- Association appareil ↔ joueur (masqué en v6.5.0 via CSS) -->
+    <section class="card grid" id="whoCard">
+      <div class="lbl">Associer cet appareil à votre nom</div>
+      <div id="whoList" class="grid"></div>
+      <div class="lbl" id="whoMsg"></div>
+    </section>
+
+    <!-- Saisie du score -->
+    <section class="card grid">
+      <div class="lbl">Saisissez votre score</div>
+      <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
+      <div id="msg" class="msg" aria-live="polite"></div>
+    </section>
+
+    <!-- Totaux -->
     <section class="card grid" id="totalsCard">
       <div class="lbl">Scores totaux</div>
       <div id="totalsList" class="grid"></div>
       <div class="lbl" id="roundStatus">0/0 soumis</div>
-      <div class="lbl danger" id="roundError"></div>
+      <div class="lbl danger" id="roundError" aria-live="assertive"></div>
     </section>
+
     <div class="footer">
-      <button id="btnEndGame" class="btn" type="button">Finir la partie</button>
+      <a class="back" href="#">← Retour</a>
     </div>
+
+    <!-- Modale -->
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="sheet">
+        <h3 id="modalTitle">Saisir mon score</h3>
+        <div id="modalMsg" class="msg" aria-live="polite"></div>
+        <div class="row">
+          <div id="modalList" class="grid" aria-live="polite"></div>
+          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0–25" />
+          <button id="btnSaveScore" class="btn" type="button">Valider</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Diagnostics (masqué en v6.5.0 via CSS) -->
+    <details class="diag" id="diag" open>
+      <summary>Diagnostics / tests</summary>
+      <div id="diagOutput" class="lbl"></div>
+    </details>
   </main>
+
+  <!-- Configuration Firebase (inchangé) -->
   <script>
-    const $=id=>document.getElementById(id);
-    const onReady=fn=>{if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fn,{once:true});}else{fn();}};
-    const setText=(id,text)=>{const el=$(id);if(el)el.textContent=text;};
-    onReady(()=>{
-      const btn=document.getElementById('btnEndGame');
-      if(!btn)return;
-      let holdTs=0,bar;
-      btn.addEventListener('mousedown',()=>{holdTs=Date.now();bar=document.createElement('div');bar.style.position='absolute';bar.style.left=0;bar.style.top=0;bar.style.bottom=0;bar.style.width='0%';bar.style.background='rgba(255,255,255,0.35)';bar.style.borderRadius='10px';bar.style.transition='width 2s linear';btn.style.position='relative';btn.appendChild(bar);setTimeout(()=>{bar.style.width='100%';},10);});
-      btn.addEventListener('mouseup',()=>{const dt=Date.now()-holdTs;if(dt>=2000){location.href='selection_jeux.html';}if(bar)bar.remove();});
+    window.__FIREBASE_CONFIG = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+  </script>
+
+  <!-- UI (non-module) : état + rendu + modale -->
+  <script>
+    const $ = (id)=>document.getElementById(id);
+    const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+
+    // Toast + Synchro + Réseau (internes, même si statusBar est masqué)
+    let __toastTimer=null; function showToast(msg, isErr=false){
+      let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t);} 
+      t.textContent = msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
+      clearTimeout(__toastTimer); __toastTimer=setTimeout(()=> t.classList.remove('show'), 2200);
+    }
+    function setSync(state){ const dot=$('syncDot'); const txt=$('syncText'); if(!dot||!txt) return; if(state==='ok'){ dot.className='dot ok'; txt.textContent='Synchronisé'; } else if(state==='wait'){ dot.className='dot wait'; txt.textContent='En attente…'; } else { dot.className='dot off'; txt.textContent='Hors ligne'; } }
+    function setNet(){ const d=$('netDot'); if(!d) return; d.className = 'dot ' + (navigator.onLine?'ok':'off'); }
+    window.addEventListener('online', setNet); window.addEventListener('offline', ()=>{ setNet(); setSync('off'); }); setNet();
+
+    const state = window.__STATE || {
+      players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
+      round: 1,
+      dealerIndex: 0,
+      roundScores: {},
+      expected(){ return this.players.length; },
+      get passInfo(){ return passRuleForRound(this.round); },
+      myIndex: parseInt(localStorage.getItem('dame_myIndex') || '-1', 10),
+      soireeId: null,
+      totals: {},
+      roundError: '',
+      gameOver: false,
+      standings: [],
+      deviceId: localStorage.getItem('deviceId') || localStorage.getItem('device_id') || null,
+      pendingScore: null,
+    };
+    window.__STATE = state;
+
+    function passRuleForRound(round){
+      const rules = ['A droite', 'A gauche', 'Au centre', 'Garde tes cartes'];
+      return rules[(round-1)%4];
+    }
+
+    function renderModalList(){
+      const host = $('modalList'); if(!host) return;
+      host.innerHTML = '';
+      state.players.forEach((p, idx)=>{
+        const line = document.createElement('div'); line.className='line';
+        const n = document.createElement('div'); n.textContent = p.name + (idx===state.dealerIndex ? ' ★' : '');
+        const v = document.createElement('div');
+        const val = state.roundScores[idx];
+        v.textContent = (typeof val==='number' && Number.isFinite(val)) ? String(val) : '—';
+        line.appendChild(n); line.appendChild(v); host.appendChild(line);
+      });
+    }
+
+    function renderAll(){
+      setText('round', String(state.round));
+      setText('dealerName', state.players[state.dealerIndex]?.name || '—');
+      setText('passInfo', state.passInfo);
+
+      // whoCard est masqué en CSS; on garde la logique interne mais sans affichage
+      const who = $('whoCard');
+      const whoList = $('whoList');
+      const whoMsg = $('whoMsg');
+      const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
+      if (who){
+        // Ne plus modifier who.hidden pour respecter le masquage CSS forcé
+        if (needBind && whoList){
+          whoList.innerHTML = '';
+          state.players.forEach((p,idx)=>{
+            const b = document.createElement('button');
+            b.className = 'whoBtn';
+            b.textContent = p.name + (idx===state.dealerIndex?' (Brasseur)':'');
+            b.addEventListener('click', ()=>{
+              try{
+                localStorage.setItem('dame_myIndex', String(idx));
+                state.myIndex = idx;
+                if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
+                renderAll();
+                if (state.pendingScore != null && typeof window.__submitScore === 'function'){
+                  const pending = state.pendingScore; state.pendingScore = null;
+                  window.__submitScore(pending).catch(()=>{});
+                }
+              }catch(e){ if (whoMsg) whoMsg.textContent = "Impossible de sauvegarder l'association (localStorage)."; }
+            });
+            whoList.appendChild(b);
+          });
+        } else if (whoMsg) {
+          whoMsg.textContent = '';
+        }
+      }
+
+      const tl = $('totalsList'); if (tl){
+        tl.innerHTML = '';
+        state.players.forEach((p,idx)=>{
+          const line = document.createElement('div'); line.className = 'line' + (idx===state.dealerIndex?' dealerBadge':'');
+          const name = document.createElement('div'); name.textContent = p.name + (idx===state.dealerIndex?' ★':'');
+          const totalVal = typeof state.totals[p.id] === 'number' ? state.totals[p.id] : (p.total||0);
+          const val = document.createElement('div'); val.textContent = String(totalVal);
+          line.appendChild(name); line.appendChild(val); tl.appendChild(line);
+        });
+      }
+      const submitted = Object.keys(state.roundScores||{}).length;
+      setText('roundStatus', `${submitted}/${state.expected()} soumis`);
+      setText('roundError', state.roundError||'');
+      setText('statusSubmitted', `${submitted}/${state.expected()}`);
+      renderModalList();
+
+      if (state.myIndex === state.dealerIndex) {
+        document.body.style.background = '#0f2e16';
+      } else {
+        document.body.style.background = 'var(--bg)';
+      }
+    }
+
+    window.__openScoreModal = ()=>{
+      const modal = $('modal'); if(!modal) return; modal.classList.add('show');
+      const inp = $('scoreInput'); if(inp && !inp.__wired){ inp.__wired=true; inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('btnSaveScore')?.click(); } }, {capture:true}); }
+      const save = $('btnSaveScore'); if(save && !save.__wired){
+        save.__wired = true;
+        save.addEventListener('click', async (ev)=>{
+          ev.preventDefault();
+          const raw = String($('scoreInput')?.value ?? '').trim();
+          const val = parseInt(raw,10);
+          if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
+          setText('modalMsg','Envoi…'); setSync('wait'); save.setAttribute('disabled','');
+          try{
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); save.removeAttribute('disabled'); return; }
+            await window.__submitScore(val);
+            setText('modalMsg','Score enregistré.'); showToast('Score enregistré');
+            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; save.removeAttribute('disabled'); }, 350);
+          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); showToast(String(err?.message||err), true); save.removeAttribute('disabled'); }
+        }, {capture:true});
+      }
+    };
+    window.__closeScoreModal = ()=>{ $('modal')?.classList.remove('show'); };
+
+    function wireOpenButton(){
+      const btnOpen = $('btnOpen');
+      if (btnOpen && !btnOpen.__wired) {
+        btnOpen.__wired = true;
+        btnOpen.disabled = false;
+        btnOpen.onclick = null;
+        btnOpen.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.__openScoreModal();
+        }, { capture: true });
+      }
+
+      document.addEventListener('click', (e) => {
+        const m = $('modal');
+        if (!m || !m.classList.contains('show')) return;
+        const sheet = m.querySelector('.sheet');
+        if (e.target === m && sheet && !sheet.contains(e.target)) {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+    }
+
+    function runUiTests(){
+      const checks = [
+        ['dealerName existe', !!$('dealerName')],
+        ['round existe', !!$('round')],
+        ['passInfo existe', !!$('passInfo')],
+        ['totalsList existe', !!$('totalsList')],
+        ['roundStatus existe', !!$('roundStatus')],
+        ['roundError existe', !!$('roundError')],
+        ['btnOpen existe', !!$('btnOpen')],
+        ['modal existe', !!$('modal')],
+        ['btnSaveScore existe', !!$('btnSaveScore')],
+        ['scoreInput existe', !!$('scoreInput')],
+      ];
+      const diag = $('diagOutput');
+      const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
+      if (diag) diag.textContent = text + '\n(v6.5.0: certaines cards sont masquées)';
+
+      const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
+      const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
+      const okCycle = JSON.stringify(expectedCycle) === JSON.stringify(actualCycle);
+      if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
+
+      if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
+      if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
+    }
+
+    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); setSync(navigator.onLine?'ok':'off'); });
+    window.renderAll = renderAll;
+  </script>
+
+  <!-- Firestore (module) : auth + listeners + transactions (inchangé) -->
+  <script type="module">
+    import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+    const qs = new URLSearchParams(location.search);
+    const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
+    const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
+    const myIndexURL = qs.get('my');
+
+    const cfg = (window.__FIREBASE_CONFIG || {}).apiKey ? window.__FIREBASE_CONFIG : {
+      ...(JSON.parse(localStorage.getItem('FIREBASE_CONFIG') || '{}')),
+    };
+    const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    if (soireeCode) localStorage.setItem('dame_code', soireeCode);
+    if (gameId)     localStorage.setItem('dame_gid', gameId);
+    if (myIndexURL !== null) localStorage.setItem('dame_myIndex', String(myIndexURL));
+
+    function normalizePlayers(soireeData){
+      if (!soireeData) return [];
+      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
+      if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
+      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
+      return [];
+    }
+
+    async function ensureAuth(){
+      return new Promise((resolve)=>{
+        const a = getAuth();
+        onAuthStateChanged(a, async (user)=>{
+          if (!localStorage.getItem('deviceId')){
+            const devIdCandidate = user?.uid || String(Date.now());
+            try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
+          }
+          window.__STATE.deviceId = localStorage.getItem('deviceId');
+          if (user) { resolve(user); return; }
+          try {
+            const cred = await signInAnonymously(a);
+            if (!localStorage.getItem('deviceId')){
+              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+            }
+            window.__STATE.deviceId = localStorage.getItem('deviceId');
+            resolve(cred.user);
+          } catch(err){
+            console.error('[Auth] Anonyme échouée', err);
+            resolve(null);
+          }
+        });
+      });
+    }
+
+    async function seedScoresIfNeeded(players){
+      if (!gameId) return;
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) return;
+      const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: 0, totals });
+      console.log('[Seed] scores_dame_de_pique créé');
+    }
+
+    function listenSoiree(){
+      if (!soireeCode) return () => {};
+      const sref = doc(db, 'soirees', soireeCode);
+      return onSnapshot(sref, async (snap)=>{
+        if (!snap.exists()) { console.warn('soiree introuvable:', soireeCode); return; }
+        const data = snap.data()||{};
+        const players = normalizePlayers(data);
+        if (players.length) window.__STATE.players = players;
+        window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
+        if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
+        else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
+        await seedScoresIfNeeded(window.__STATE.players);
+        // Auto-bind par deviceId si possible (même si whoCard est masqué)
+        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
+        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+        if (needBind && devId){
+          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
+          if (idx>=0){
+            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
+            window.__STATE.myIndex = idx;
+          }
+        }
+        window.renderAll?.();
+      });
+    }
+
+    function listenScores(){
+      if (!gameId) return () => {};
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      return onSnapshot(ref, (snap)=>{
+        setSync(navigator.onLine?'ok':'off');
+        if (!snap.exists()) return;
+        const d = snap.data();
+        window.__STATE.round       = d.round || 1;
+        window.__STATE.dealerIndex = typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex;
+        window.__STATE.totals      = d.totals || window.__STATE.totals || {};
+        window.__STATE.roundScores = d.roundState || {};
+        window.__STATE.roundError  = d.roundError || '';
+        window.__STATE.gameOver    = !!d.gameOver;
+        window.__STATE.standings   = d.standings || [];
+        window.renderAll?.();
+      });
+    }
+    window.__listenScores = listenScores;
+
+    window.__submitScore = async function submitScore(val){
+      if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
+      if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
+      setSync('wait');
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      try{
+        await runTransaction(db, async (tx)=>{
+          const snap = await tx.get(ref);
+          if (!snap.exists()) throw new Error('Partie introuvable');
+          const d = snap.data()||{};
+          const round = (typeof d.round==='number' && d.round>0) ? d.round : 1;
+          const roundState = {...(d.roundState||{})};
+          const totals = {...(d.totals||{})};
+
+          // Détermine l'index local si inconnu
+          let idx = window.__STATE.myIndex;
+          if (!(Number.isFinite(idx) && idx>=0 && idx<window.__STATE.players.length)){
+            const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+            if (devId){
+              idx = window.__STATE.players.findIndex(p => (p.deviceId && p.deviceId===devId));
+            }
+          }
+          if (!(Number.isFinite(idx) && idx>=0 && idx<window.__STATE.players.length)){
+            throw new Error("Associez cet appareil à votre nom (section masquée en v6.5.0, association auto conseillée).");
+          }
+
+          roundState[idx] = Number(val);
+
+          const expected = window.__STATE.players.length;
+          const submitted = Object.keys(roundState).length;
+
+          if (submitted === expected){
+            // Fin de tour: addition et passage au suivant
+            const ids = window.__STATE.players.map(p=>p.id);
+            ids.forEach((pid, i)=>{ totals[pid] = Number(totals[pid]||0) + Number(roundState[i]||0); });
+            const nextRound = round + 1;
+            const nextDealer = (typeof d.dealerIndex==='number') ? ((d.dealerIndex+1) % expected) : ((window.__STATE.dealerIndex+1) % expected);
+            tx.update(ref, { round: nextRound, dealerIndex: nextDealer, totals, roundState: {}, roundError: '' });
+          } else {
+            tx.update(ref, { roundState, roundError: '' });
+          }
+        });
+        setSync('ok');
+      }catch(err){ setSync('off'); throw err; }
+    };
+
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user){ try{ await signInAnonymously(auth); }catch(e){ console.error('Auth anonyme impossible', e); } return; }
+      const un1 = listenSoiree();
+      const un2 = listenScores();
+      window.addEventListener('beforeunload', ()=>{ try{un1();un2();}catch{} });
     });
   </script>
 </body>
