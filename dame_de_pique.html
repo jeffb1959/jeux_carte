@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.4.0 (Finitions: messages, synchro, garde-fous) -->
+<!-- Dame de Pique — v6.4.1 (Masquage des cartes status/who/diag) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -39,16 +39,13 @@
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
     .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
-    /* Status bar + toasts */
-    .status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .dot{inline-size:10px;block-size:10px;border-radius:999px;display:inline-block}
-    .dot.ok{background:#22c55e}
-    .dot.wait{background:#f59e0b}
-    .dot.off{background:#ef4444}
-    .muted{color:#9bb3d1;font-size:.9rem}
-    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:var(--text);padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:none}
-    .toast.show{display:block}
-    .toast.err{border-color:#7f1d1d}
+    /* util */
+    .hidden{display:none !important}
+      /* Finir la partie — styles isolés */
+    #btnEndGame{position:relative;background:#22c55e;color:#0b1220;width:60%;min-height:40px;font-size:16px;border-radius:10px;font-weight:700;overflow:hidden;margin:0 auto}
+    #btnEndGame .progress{position:absolute;left:0;top:0;bottom:0;width:0%;background:rgba(255,255,255,.35);pointer-events:none}
+    #btnEndGame.holding .progress{animation:endHold 2s linear forwards}
+    @keyframes endHold{from{width:0%}to{width:100%}}
   </style>
 </head>
 <body>
@@ -62,16 +59,17 @@
       </div>
     </header>
 
-    <!-- Barre de statut (synchro, en ligne, x/y) -->
-    <section class="card status" id="statusBar" aria-live="polite">
-      <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait" title="État de synchronisation"></span>
-      <span id="syncText" class="muted">En attente…</span>
-      <span class="muted" style="margin-left:auto">Soumis: <span id="statusSubmitted">0/0</span></span>
-      <span class="muted">Réseau:</span> <span id="netDot" class="dot off" title="État réseau"></span>
+    <!-- Barre de statut (sera masquée) -->
+    <section class="card grid" id="statusBar">
+      <div class="lbl">Statut</div>
+      <div class="grid">
+        <div class="line"><div>Synchro</div><div id="statusSync">—</div></div>
+        <div class="line"><div>Réseau</div><div id="statusNet">—</div></div>
+      </div>
     </section>
 
-    <!-- Association appareil ↔ joueur (s'affiche si myIndex inconnu) -->
-    <section class="card grid" id="whoCard" hidden>
+    <!-- Association appareil ↔ joueur (sera masquée) -->
+    <section class="card grid" id="whoCard">
       <div class="lbl">Associer cet appareil à votre nom</div>
       <div id="whoList" class="grid"></div>
       <div class="lbl" id="whoMsg"></div>
@@ -92,57 +90,49 @@
       <div class="lbl danger" id="roundError" aria-live="assertive"></div>
     </section>
 
-    <div class="footer">
-      <a class="back" href="#">← Retour</a>
-    </div>
-
-    <!-- Modale -->
-    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <div class="sheet">
-        <h3 id="modalTitle">Saisir mon score</h3>
-        <div id="modalMsg" class="msg" aria-live="polite"></div>
-        <div class="row">
-          <div id="modalList" class="grid" aria-live="polite"></div>
-          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0–25" />
-          <button id="btnSaveScore" class="btn" type="button">Valider</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Diagnostics -->
-    <details class="diag" id="diag" open>
+    <!-- Diagnostics (sera masqué) -->
+    <details class="diag" id="diag">
       <summary>Diagnostics / tests</summary>
       <div id="diagOutput" class="lbl"></div>
     </details>
+      <!-- Bouton Fin de partie (maintien 2s avec barre de défilement) -->
+    <div class="footer">
+      <button id="btnEndGame" class="btn" type="button" aria-label="Finir la partie"><span class="progress"></span>Finir la partie</button>
+    </div>
   </main>
 
-  <!-- Configuration Firebase injectée depuis index.html -->
-  <script>
-    window.__FIREBASE_CONFIG = {
-      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
-      authDomain: "soireecartev2.firebaseapp.com",
-      projectId: "soireecartev2",
-      storageBucket: "soireecartev2.firebasestorage.app",
-      messagingSenderId: "784781686361",
-      appId: "1:784781686361:web:033693cb22fb1a55af2348"
-    };
-  </script>
+  <!-- Modale de score -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="sheet">
+      <h3 id="modalTitle">Score du tour</h3>
+      <div id="modalList" class="grid" style="margin-bottom:8px;"></div>
+      <div class="row">
+        <input id="scoreInput" class="inp" inputmode="numeric" pattern="[0-9]*" placeholder="Votre score (0–25)" />
+        <button id="btnSaveScore" class="btn" type="button">Valider</button>
+        <div id="modalMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
 
-  <!-- UI (non-module) : état + rendu + modale -->
+  <!-- UI (non-module) : état + rendu + modale + helpers -->
   <script>
     const $ = (id)=>document.getElementById(id);
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
-    // Toast + Synchro + Réseau
-    let __toastTimer=null; function showToast(msg, isErr=false){
-      let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t);} 
-      t.textContent = msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
-      clearTimeout(__toastTimer); __toastTimer=setTimeout(()=> t.classList.remove('show'), 2200);
+    // Masquer les cartes demandées
+    function hideDebugCards(){
+      const sb = $('statusBar'); if (sb){ sb.hidden = true; sb.style.display = 'none'; }
+      const who = $('whoCard'); if (who){ who.hidden = true; who.style.display = 'none'; }
+      const diag = $('diag'); if (diag){ try{ diag.open=false; }catch{} diag.style.display='none'; }
     }
-    function setSync(state){ const dot=$('syncDot'); const txt=$('syncText'); if(!dot||!txt) return; if(state==='ok'){ dot.className='dot ok'; txt.textContent='Synchronisé'; } else if(state==='wait'){ dot.className='dot wait'; txt.textContent='En attente…'; } else { dot.className='dot off'; txt.textContent='Hors ligne'; } }
-    function setNet(){ const d=$('netDot'); if(!d) return; d.className = 'dot ' + (navigator.onLine?'ok':'off'); }
-    window.addEventListener('online', setNet); window.addEventListener('offline', ()=>{ setNet(); setSync('off'); }); setNet();
+
+    // Toast minimal
+    let __toastTimer=null; function showToast(msg, isErr=false){
+      let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:#fff;padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:none'; document.body.appendChild(t);} 
+      t.textContent = msg; t.style.borderColor = isErr? '#7f1d1d' : '#2b3857'; t.style.display='block';
+      clearTimeout(__toastTimer); __toastTimer=setTimeout(()=> t.style.display='none', 2400);
+    }
 
     const state = window.__STATE || {
       players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
@@ -190,7 +180,7 @@
       const whoMsg = $('whoMsg');
       const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
       if (who){
-        who.hidden = !needBind;
+        who.hidden = !needBind; // restera masqué par hideDebugCards()
         if (needBind && whoList){
           whoList.innerHTML = '';
           state.players.forEach((p,idx)=>{
@@ -229,8 +219,10 @@
       const submitted = Object.keys(state.roundScores||{}).length;
       setText('roundStatus', `${submitted}/${state.expected()} soumis`);
       setText('roundError', state.roundError||'');
-      setText('statusSubmitted', `${submitted}/${state.expected()}`);
       renderModalList();
+
+      // Toujours re-cacher les cartes demandées
+      hideDebugCards();
 
       if (state.myIndex === state.dealerIndex) {
         document.body.style.background = '#0f2e16';
@@ -249,13 +241,13 @@
           const raw = String($('scoreInput')?.value ?? '').trim();
           const val = parseInt(raw,10);
           if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
-          setText('modalMsg','Envoi…'); setSync('wait'); save.setAttribute('disabled','');
+          setText('modalMsg','Envoi…');
           try{
-            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); save.removeAttribute('disabled'); return; }
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); return; }
             await window.__submitScore(val);
-            setText('modalMsg','Score enregistré.'); showToast('Score enregistré');
-            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; save.removeAttribute('disabled'); }, 350);
-          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); showToast(String(err?.message||err), true); save.removeAttribute('disabled'); }
+            setText('modalMsg','Score enregistré.');
+            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; }, 350);
+          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); }
         }, {capture:true});
       }
     };
@@ -305,242 +297,264 @@
       const diag = $('diagOutput');
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
       if (diag) diag.textContent = text;
-
       const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
       const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
       const okCycle = JSON.stringify(expectedCycle) === JSON.stringify(actualCycle);
       if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
-
       if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
       if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
-    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); setSync(navigator.onLine?'ok':'off'); });
+    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); hideDebugCards(); });
     window.renderAll = renderAll;
   </script>
 
-  <!-- Firestore (module) : auth anonyme + listeners + transactions -->
+  <!-- Bouton Finir la partie (JS dédié, non intrusif) -->
+  <script>
+    onReady(()=>{
+      const btn = document.getElementById('btnEndGame');
+      if(!btn) return;
+      const progress = btn.querySelector('.progress') || (function(){ const s=document.createElement('span'); s.className='progress'; btn.prepend(s); return s; })();
+      let holdTs=0;
+      const start=()=>{ holdTs=Date.now(); btn.classList.add('holding'); };
+      const end=()=>{ const dt=Date.now()-holdTs; btn.classList.remove('holding'); progress.style.width='0%'; if(dt>=2000){ location.href='selection_jeux.html'; } };
+      ['mousedown','touchstart'].forEach(ev=> btn.addEventListener(ev, start, {passive:true}));
+      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> btn.addEventListener(ev, end, {passive:true}));
+    });
+  </script>
+
+  <!-- Firebase config attendue depuis index.html (window.__FIREBASE_CONFIG) -->
+  <script>
+    // On suppose que index.html a déjà mis window.__FIREBASE_CONFIG
+    if (!window.__FIREBASE_CONFIG) {
+      console.warn('[Config] __FIREBASE_CONFIG manquante — ouvre index.html avant cette page.');
+    }
+  </script>
+
+  <!-- Firestore (module) : auth anonyme + listeners + transaction de score -->
   <script type="module">
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
     import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
-    const qs = new URLSearchParams(location.search);
-    const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
-    const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
-    const myIndexURL = qs.get('my');
+    const cfg = window.__FIREBASE_CONFIG;
+    if (!cfg) {
+      console.warn('[Init] Config Firebase absente — synchro inactive.');
+    } else {
+      const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+      const auth = getAuth(app);
+      const db   = getFirestore(app);
 
-    const cfg = (window.__FIREBASE_CONFIG || {}).apiKey ? window.__FIREBASE_CONFIG : {
-      ...(JSON.parse(localStorage.getItem('FIREBASE_CONFIG') || '{}')),
-    };
-    const app = getApps().length ? getApps()[0] : initializeApp(cfg);
-    const auth = getAuth(app);
-    const db   = getFirestore(app);
+      const qs = new URLSearchParams(location.search);
+      const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
+      const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
+      const myIndexURL = qs.get('my');
 
-    if (soireeCode) localStorage.setItem('dame_code', soireeCode);
-    if (gameId)     localStorage.setItem('dame_gid', gameId);
-    if (myIndexURL !== null) localStorage.setItem('dame_myIndex', String(myIndexURL));
+      if (soireeCode) localStorage.setItem('dame_code', soireeCode);
+      if (gameId)     localStorage.setItem('dame_gid', gameId);
+      if (myIndexURL !== null) localStorage.setItem('dame_myIndex', String(myIndexURL));
 
-    function normalizePlayers(soireeData){
-      if (!soireeData) return [];
-      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
-      if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
-      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
-      return [];
-    }
+      function normalizePlayers(soireeData){
+        if (!soireeData) return [];
+        if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || p.deviceid || null }));
+        if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
+        if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || obj?.device_id || obj?.deviceid || null }));
+        return [];
+      }
 
-    async function ensureAuth(){
-      return new Promise((resolve)=>{
-        const a = getAuth();
-        onAuthStateChanged(a, async (user)=>{
-          if (!localStorage.getItem('deviceId')){
-            const devIdCandidate = user?.uid || String(Date.now());
-            try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
-          }
-          window.__STATE.deviceId = localStorage.getItem('deviceId');
-          if (user) { resolve(user); return; }
-          try {
-            const cred = await signInAnonymously(a);
+      async function ensureAuth(){
+        return new Promise((resolve)=>{
+          onAuthStateChanged(auth, async (user)=>{
             if (!localStorage.getItem('deviceId')){
-              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+              const devIdCandidate = user?.uid || String(Date.now());
+              try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
             }
             window.__STATE.deviceId = localStorage.getItem('deviceId');
-            resolve(cred.user);
-          } catch(err){
-            console.error('[Auth] Anonyme échouée', err);
-            resolve(null);
-          }
+            if (user) { resolve(user); return; }
+            try {
+              const cred = await signInAnonymously(auth);
+              if (!localStorage.getItem('deviceId')){
+                try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+              }
+              window.__STATE.deviceId = localStorage.getItem('deviceId');
+              resolve(cred.user);
+            } catch(err){
+              console.error('[Auth] Anonyme échouée', err);
+              resolve(null);
+            }
+          });
         });
-      });
-    }
+      }
 
-    async function seedScoresIfNeeded(players){
-      if (!gameId) return;
-      const ref = doc(db, 'scores_dame_de_pique', gameId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) return;
-      const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: 0, totals });
-      console.log('[Seed] scores_dame_de_pique créé');
-    }
+      async function seedScoresIfNeeded(players){
+        const gid = gameId;
+        if (!gid) return;
+        const ref = doc(db, 'scores_dame_de_pique', gid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) return;
+        const totals = Object.fromEntries((players||[]).map(p=>[p.id, 0]));
+        await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: 0, totals });
+        console.log('[Seed] scores_dame_de_pique créé');
+      }
 
-    function listenSoiree(){
-      if (!soireeCode) return () => {};
-      const sref = doc(db, 'soirees', soireeCode);
-      return onSnapshot(sref, async (snap)=>{
-        if (!snap.exists()) { console.warn('soiree introuvable:', soireeCode); return; }
-        const data = snap.data()||{};
-        const players = normalizePlayers(data);
-        if (players.length) window.__STATE.players = players;
-        window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
-        if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
-        else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
-        await seedScoresIfNeeded(window.__STATE.players);
-        // Auto-bind par deviceId si possible
-        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
-        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
-        if (needBind && devId){
-          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
-          if (idx>=0){
-            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
-            window.__STATE.myIndex = idx;
+      function listenSoiree(){
+        if (!soireeCode) return () => {};
+        const sref = doc(db, 'soirees', soireeCode);
+        return onSnapshot(sref, async (snap)=>{
+          if (!snap.exists()) { console.warn('soiree introuvable:', soireeCode); return; }
+          const data = snap.data()||{};
+          const players = normalizePlayers(data);
+          if (players.length) window.__STATE.players = players;
+          window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
+          if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
+          else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
+          await seedScoresIfNeeded(window.__STATE.players);
+          // Auto-bind par deviceId si possible
+          const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
+          const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+          if (needBind && devId){
+            const norm = v=> (v==null?'':String(v)).trim().toLowerCase();
+            const idx = window.__STATE.players.findIndex(p=> norm(p.deviceId)===norm(devId));
+            if (idx>=0){
+              try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
+              window.__STATE.myIndex = idx;
+            }
           }
-        }
-        window.renderAll?.();
-      });
-    }
-
-    function listenScores(){
-      if (!gameId) return () => {};
-      const ref = doc(db, 'scores_dame_de_pique', gameId);
-      return onSnapshot(ref, (snap)=>{
-        setSync(navigator.onLine?'ok':'off');
-        if (!snap.exists()) return;
-        const d = snap.data();
-        window.__STATE.round       = d.round || 1;
-        window.__STATE.dealerIndex = typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex;
-        window.__STATE.totals      = d.totals || window.__STATE.totals || {};
-        window.__STATE.roundScores = d.roundState || {};
-        window.__STATE.roundError  = d.roundError || '';
-        window.__STATE.gameOver    = !!d.gameOver;
-        window.__STATE.standings   = d.standings || [];
-        window.renderAll?.();
-        renderGameOver();
-      });
-    }
-    window.__listenScores = listenScores;
-
-    window.__submitScore = async function submitScore(val){
-      if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
-      const s = window.__STATE || {};
-      const pIndex = s.myIndex;
-      if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=s.players.length) {
-        s.pendingScore = val;
-        const who = document.getElementById('whoCard'); if (who) { who.hidden = false; try{ who.scrollIntoView({behavior:'smooth', block:'start'}); }catch{} }
-        throw new Error('Index joueur inconnu (my). Choisissez votre nom ci-dessus.');
+          window.renderAll?.();
+        });
       }
-      if (!gameId) throw new Error('Partie (gid) inconnue');
-      const n = (s.players||[]).length || 0;
-      if (!n) throw new Error('Aucun joueur configuré');
 
-      const ref = doc(db, 'scores_dame_de_pique', gameId);
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Document partie introuvable');
-        const d = snap.data();
-        if (d.gameOver) throw new Error('Partie terminée');
-
-        const round = typeof d.round==='number' ? d.round : 1;
-        const dealerIndex = typeof d.dealerIndex==='number' ? d.dealerIndex : 0;
-        const totals = d.totals || {};
-        const roundState = {...(d.roundState||{})};
-
-        // Garde-fou double saisie: si déjà saisi pour ce tour, on remplace mais pas plus d'une fois par tick
-        roundState[pIndex] = val;
-
-        const submittedCount = Object.keys(roundState).length;
-        const values = Array.from({length:n}, (_,i)=> Number(roundState[i]||0));
-        const sum = values.reduce((a,b)=>a+b, 0);
-
-        if (submittedCount < n){
-          tx.set(ref, { roundState, roundError: null }, { merge:true });
-          return;
-        }
-
-        if (sum !== 25){
-          tx.set(ref, { roundState, roundError: "Le total n'est pas 25. Vérifiez et revalidez." }, { merge:true });
-          return;
-        }
-
-        let perRound = values.slice();
-        const count25 = values.filter(v=>v===25).length;
-        const count0  = values.filter(v=>v===0).length;
-        if (count25===1 && count0===n-1){
-          const idx25 = values.findIndex(v=>v===25);
-          perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
-        }
-
-        const ids = (s.players||[]).map((p,i)=> p.id || `p${i+1}`);
-        const newTotals = { ...totals };
-        for (let i=0;i<n;i++){
-          const pid = ids[i] || `p${i+1}`;
-          const cur = typeof newTotals[pid]==='number' ? newTotals[pid] : 0;
-          newTotals[pid] = cur + (perRound[i]||0);
-        }
-
-        const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
-        let payload = { totals: newTotals, round: round + 1, dealerIndex: (dealerIndex + 1) % n, roundState: {}, roundError: null };
-        if (over){
-          const standings = ids.map((pid,i)=>({ id: pid, name: (s.players[i]?.name||pid), total: newTotals[pid]||0 }))
-                               .sort((a,b)=> a.total - b.total);
-          payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
-        }
-        tx.set(ref, payload, { merge:true });
-      });
-    };
-
-    function renderGameOver(){
-      let host = document.getElementById('gameOverCard');
-      if (!window.__STATE.gameOver){ if(host) host.remove(); return; }
-      if (!host){
-        host = document.createElement('section');
-        host.className = 'card grid';
-        host.id = 'gameOverCard';
-        document.querySelector('.wrap')?.appendChild(host);
+      function listenScores(){
+        if (!gameId) return () => {};
+        const ref = doc(db, 'scores_dame_de_pique', gameId);
+        return onSnapshot(ref, (snap)=>{
+          if (!snap.exists()) return;
+          const d = snap.data();
+          window.__STATE.round       = d.round || 1;
+          window.__STATE.dealerIndex = typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex;
+          window.__STATE.totals      = d.totals || window.__STATE.totals || {};
+          window.__STATE.roundScores = d.roundState || {};
+          window.__STATE.roundError  = d.roundError || '';
+          window.__STATE.gameOver    = !!d.gameOver;
+          window.__STATE.standings   = d.standings || [];
+          window.renderAll?.();
+          renderGameOver();
+        });
       }
-      host.innerHTML = '';
-      const h = document.createElement('div'); h.className='lbl'; h.textContent = 'Tableau des honneurs'; host.appendChild(h);
-      const list = document.createElement('div'); list.className='grid'; host.appendChild(list);
-      (window.__STATE.standings||[]).forEach((s,idx)=>{
-        const line = document.createElement('div'); line.className='line';
-        const n = document.createElement('div'); n.textContent = s.name; if(idx===0) n.style.color = '#22c55e';
-        const v = document.createElement('div'); v.textContent = String(s.total);
-        line.appendChild(n); line.appendChild(v); list.appendChild(line);
-      });
-      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
-      btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
-      btn.addEventListener('mouseup', ()=>{
-        if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
-      });
-      host.appendChild(btn);
-    }
+      window.__listenScores = listenScores;
 
-    async function main(){
-      try{
-        await ensureAuth();
-        listenSoiree();
-        listenScores();
-        console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
-        const d = document.getElementById('diagOutput');
-        if (d) d.textContent += `\nFirebase OK — soiree:${soireeCode||'—'} gid:${gameId||'—'}`;
-      }catch(err){
-        console.error('[Firestore] Échec initialisation', err);
-        const d = document.getElementById('diagOutput');
-        if (d) d.textContent += `\n❌ Firestore: ${err?.message||err}`;
+      window.__submitScore = async function submitScore(val){
+        if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
+        const s = window.__STATE || {};
+        const pIndex = s.myIndex;
+        if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=s.players.length) {
+          s.pendingScore = val;
+          const who = document.getElementById('whoCard'); if (who) { who.hidden = false; try{ who.scrollIntoView({behavior:'smooth', block:'start'}); }catch{} }
+          throw new Error('Index joueur inconnu (my). Choisissez votre nom ci-dessus.');
+        }
+        if (!gameId) throw new Error('Partie (gid) inconnue');
+        const n = (s.players||[]).length || 0;
+        if (!n) throw new Error('Aucun joueur configuré');
+
+        const ref = doc(db, 'scores_dame_de_pique', gameId);
+        await runTransaction(db, async (tx)=>{
+          const snap = await tx.get(ref);
+          if (!snap.exists()) throw new Error('Document partie introuvable');
+          const d = snap.data();
+          if (d.gameOver) throw new Error('Partie terminée');
+
+          const round = typeof d.round==='number' ? d.round : 1;
+          const dealerIndex = typeof d.dealerIndex==='number' ? d.dealerIndex : 0;
+          const totals = d.totals || {};
+          const roundState = {...(d.roundState||{})};
+
+          roundState[pIndex] = val;
+
+          const submittedCount = Object.keys(roundState).length;
+          const values = Array.from({length:n}, (_,i)=> Number(roundState[i]||0));
+          const sum = values.reduce((a,b)=>a+b, 0);
+
+          if (submittedCount < n){
+            tx.set(ref, { roundState, roundError: null }, { merge:true });
+            return;
+          }
+
+          if (sum !== 25){
+            tx.set(ref, { roundState, roundError: "Le total n'est pas 25. Vérifiez et revalidez." }, { merge:true });
+            return;
+          }
+
+          let perRound = values.slice();
+          const count25 = values.filter(v=>v===25).length;
+          const count0  = values.filter(v=>v===0).length;
+          if (count25===1 && count0===n-1){
+            const idx25 = values.findIndex(v=>v===25);
+            perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
+          }
+
+          const ids = (s.players||[]).map((p,i)=> p.id || `p${i+1}`);
+          const newTotals = { ...totals };
+          for (let i=0;i<n;i++){
+            const pid = ids[i] || `p${i+1}`;
+            const cur = typeof newTotals[pid]==='number' ? newTotals[pid] : 0;
+            newTotals[pid] = cur + (perRound[i]||0);
+          }
+
+          const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
+          let payload = { totals: newTotals, round: round + 1, dealerIndex: (dealerIndex + 1) % n, roundState: {}, roundError: null };
+          if (over){
+            const standings = ids.map((pid,i)=>({ id: pid, name: (s.players[i]?.name||pid), total: newTotals[pid]||0 }))
+                                 .sort((a,b)=> a.total - b.total);
+            payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
+          }
+          tx.set(ref, payload, { merge:true });
+        });
+      };
+
+      function renderGameOver(){
+        let host = document.getElementById('gameOverCard');
+        if (!window.__STATE.gameOver){ if(host) host.remove(); return; }
+        if (!host){
+          host = document.createElement('section');
+          host.className = 'card grid';
+          host.id = 'gameOverCard';
+          document.querySelector('.wrap')?.appendChild(host);
+        }
+        host.innerHTML = '';
+        const h = document.createElement('div'); h.className='lbl'; h.textContent = 'Tableau des honneurs'; host.appendChild(h);
+        const list = document.createElement('div'); list.className='grid'; host.appendChild(list);
+        (window.__STATE.standings||[]).forEach((s,idx)=>{
+          const line = document.createElement('div'); line.className='line';
+          const n = document.createElement('div'); n.textContent = s.name; if(idx===0) n.style.color = '#22c55e';
+          const v = document.createElement('div'); v.textContent = String(s.total);
+          line.appendChild(n); line.appendChild(v); list.appendChild(line);
+        });
+        const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
+        btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
+        btn.addEventListener('mouseup', ()=>{
+          if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
+        });
+        host.appendChild(btn);
       }
-    }
 
-    main();
+      async function main(){
+        try{
+          await ensureAuth();
+          listenSoiree();
+          listenScores();
+          console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
+          const d = document.getElementById('diagOutput');
+          if (d) d.textContent += `\nFirebase OK — soiree:${soireeCode||'—'} gid:${gameId||'—'}`;
+        }catch(err){
+          console.error('[Firestore] Échec initialisation', err);
+          const d = document.getElementById('diagOutput');
+          if (d) d.textContent += `\n❌ Firestore: ${err?.message||err}`;
+          showToast('❌ Firebase: ' + (err?.message||err), true);
+        }
+      }
+
+      main();
+    }
   </script>
 </body>
 </html>
