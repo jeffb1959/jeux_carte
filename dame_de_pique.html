@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.3.5 (document complet, UI + Firestore) -->
+<!-- Dame de Pique — v6.3.6 (auto-association totale par deviceId, document complet) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -314,16 +314,35 @@
 
     function normalizePlayers(soireeData){
       if (!soireeData) return [];
-      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
+      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || p.deviceid || null }));
       if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
-      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
+      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || obj?.device_id || obj?.deviceid || null }));
       return [];
+    }
+
+    // Auto-association: essaye de lier myIndex au joueur dont deviceId == uid courant
+    function autoBindMyIndex(){
+      const norm = (v)=> (v==null? '': String(v)).trim().toLowerCase();
+      const devCandidates = [
+        window.__STATE.deviceId,
+        (typeof localStorage!=='undefined' ? localStorage.getItem('deviceId') : null),
+        (auth?.currentUser?.uid || null)
+      ].filter(Boolean);
+      const devIdNorm = norm(devCandidates[0]||'');
+      if (!devIdNorm || !Array.isArray(window.__STATE.players)) return false;
+      const idx = window.__STATE.players.findIndex(p => norm(p.deviceId) === devIdNorm);
+      if (idx>=0){
+        try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
+        window.__STATE.myIndex = idx;
+        const who = document.getElementById('whoCard'); if (who) who.hidden = true;
+        return true;
+      }
+      return false;
     }
 
     async function ensureAuth(){
       return new Promise((resolve)=>{
-        const a = getAuth();
-        onAuthStateChanged(a, async (user)=>{
+        onAuthStateChanged(auth, async (user)=>{
           if (!localStorage.getItem('deviceId')){
             const devIdCandidate = user?.uid || String(Date.now());
             try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
@@ -331,7 +350,7 @@
           window.__STATE.deviceId = localStorage.getItem('deviceId');
           if (user) { resolve(user); return; }
           try {
-            const cred = await signInAnonymously(a);
+            const cred = await signInAnonymously(auth);
             if (!localStorage.getItem('deviceId')){
               try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
             }
@@ -367,16 +386,7 @@
         if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
         else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
         await seedScoresIfNeeded(window.__STATE.players);
-        // Auto-bind par deviceId si possible
-        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
-        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
-        if (needBind && devId){
-          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
-          if (idx>=0){
-            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
-            window.__STATE.myIndex = idx;
-          }
-        }
+        autoBindMyIndex();
         window.renderAll?.();
       });
     }
@@ -497,6 +507,7 @@
     async function main(){
       try{
         await ensureAuth();
+        autoBindMyIndex(); // important: réalise l'association aussitôt l'auth prête
         listenSoiree();
         listenScores();
         console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
