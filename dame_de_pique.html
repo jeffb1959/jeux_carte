@@ -1,10 +1,10 @@
-<!-- Dame de Pique — v6.3.4 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
+<!-- Dame de Pique — v6.3.3 (stable) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — Étape 3-4</title>
+  <title>Dame de Pique — App</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -13,7 +13,6 @@
     .wrap{max-width:390px;margin:0 auto;padding:18px;display:grid;gap:18px}
     .titleRow{display:block;margin-bottom:8px}
     .titleRow h1{display:block;margin:0 0 8px 0;font-size:clamp(22px,5vw,28px)}
-    h1{margin:0;font-size:clamp(22px,5vw,28px)}
     .lbl{color:var(--muted);font-size:clamp(14px,4vw,16px)}
     .card{background:#111a2e;border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
     .grid{display:grid;gap:12px}
@@ -53,14 +52,14 @@
       </div>
     </header>
 
-    <!-- Association appareil ↔ joueur (s'affiche si myIndex inconnu) -->
+    <!-- Association appareil ↔ joueur (si myIndex inconnu) -->
     <section class="card grid" id="whoCard" hidden>
       <div class="lbl">Associer cet appareil à votre nom</div>
       <div id="whoList" class="grid"></div>
       <div class="lbl" id="whoMsg"></div>
     </section>
 
-    <!-- Section saisie du score -->
+    <!-- Saisie du score -->
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
       <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
@@ -92,9 +91,9 @@
       </div>
     </div>
 
-    <!-- Diagnostics (repliable) : utile pendant le dev, non intrusif pour les aînés) -->
+    <!-- Diagnostics -->
     <details class="diag" id="diag" open>
-      <summary>Diagnostics / tests (peut être refermé)</summary>
+      <summary>Diagnostics / tests</summary>
       <div id="diagOutput" class="lbl"></div>
     </details>
   </main>
@@ -111,21 +110,14 @@
     };
   </script>
 
-  <!-- ===== Script UI global (non-module) : état local + rendu + modale ===== -->
+  <!-- UI (non-module) : état + rendu + modale -->
   <script>
-    // Helpers DOM
     const $ = (id)=>document.getElementById(id);
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
     function setText(id, text){ const el=$(id); if(el) el.textContent= text; }
 
-    // État UI local (enrichi/tenu à jour par Firestore via module)
     const state = window.__STATE || {
-      players: [
-        { id: 'p1', name: 'Joueur 1', total: 0 },
-        { id: 'p2', name: 'Joueur 2', total: 0 },
-        { id: 'p3', name: 'Joueur 3', total: 0 },
-        { id: 'p4', name: 'Joueur 4', total: 0 },
-      ],
+      players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
       round: 1,
       dealerIndex: 0,
       roundScores: {},
@@ -137,6 +129,8 @@
       roundError: '',
       gameOver: false,
       standings: [],
+      deviceId: localStorage.getItem('deviceId') || localStorage.getItem('device_id') || null,
+      pendingScore: null,
     };
     window.__STATE = state;
 
@@ -163,10 +157,9 @@
       setText('dealerName', state.players[state.dealerIndex]?.name || '—');
       setText('passInfo', state.passInfo);
 
-      // Affichage association appareil ↔ joueur
-      const who = document.getElementById('whoCard');
-      const whoList = document.getElementById('whoList');
-      const whoMsg = document.getElementById('whoMsg');
+      const who = $('whoCard');
+      const whoList = $('whoList');
+      const whoMsg = $('whoMsg');
       const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
       if (who){
         who.hidden = !needBind;
@@ -177,13 +170,17 @@
             b.className = 'whoBtn';
             b.textContent = p.name + (idx===state.dealerIndex?' (Brasseur)':'');
             b.addEventListener('click', ()=>{
-              try{
-                localStorage.setItem('dame_myIndex', String(idx));
-                state.myIndex = idx;
-                if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
-                renderAll();
-              }catch(e){ if (whoMsg) whoMsg.textContent = 'Impossible de sauvegarder l\'association (localStorage).'; }
-            });
+            try{
+              localStorage.setItem('dame_myIndex', String(idx));
+              state.myIndex = idx;
+              if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
+              renderAll();
+              if (state.pendingScore != null && typeof window.__submitScore === 'function'){
+                const pending = state.pendingScore; state.pendingScore = null;
+                window.__submitScore(pending).catch(()=>{});
+              }
+            }catch(e){ if (whoMsg) whoMsg.textContent = "Impossible de sauvegarder l'association (localStorage)."; }
+          });
             whoList.appendChild(b);
           });
         } else if (whoMsg) {
@@ -191,7 +188,7 @@
         }
       }
 
-      const tl = document.getElementById('totalsList'); if (tl){
+      const tl = $('totalsList'); if (tl){
         tl.innerHTML = '';
         state.players.forEach((p,idx)=>{
           const line = document.createElement('div'); line.className = 'line' + (idx===state.dealerIndex?' dealerBadge':'');
@@ -206,7 +203,6 @@
       setText('roundError', state.roundError||'');
       renderModalList();
 
-      // Fond selon brasseur (seulement sur l'appareil du brasseur)
       if (state.myIndex === state.dealerIndex) {
         document.body.style.background = '#0f2e16';
       } else {
@@ -214,7 +210,6 @@
       }
     }
 
-    // Modale open/close + envoi
     window.__openScoreModal = ()=>{
       const modal = $('modal'); if(!modal) return; modal.classList.add('show');
       const inp = $('scoreInput'); if(inp && !inp.__wired){ inp.__wired=true; inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('btnSaveScore')?.click(); } }, {capture:true}); }
@@ -227,10 +222,10 @@
           if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
           setText('modalMsg','Envoi…');
           try{
-            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); return; }
+            if (typeof window.__submitScore !== 'function') { throw new Error('soumission indisponible'); }
             await window.__submitScore(val);
             setText('modalMsg','Score enregistré.');
-            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); if($('scoreInput')) $('scoreInput').value=''; }, 350);
+            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; }, 350);
           }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); }
         }, {capture:true});
       }
@@ -249,7 +244,6 @@
       document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') window.__closeScoreModal(); }, {capture:true});
     }
 
-    // Diagnostics UI (tests supplémentaires)
     function runUiTests(){
       const checks = [
         ['dealerName existe', !!$('dealerName')],
@@ -267,23 +261,19 @@
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
       if (diag) diag.textContent = text;
 
-      // Test cycle passRuleForRound sur 8 tours
       const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
       const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
       const okCycle = JSON.stringify(expectedCycle) === JSON.stringify(actualCycle);
       if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
 
-      // Présence de __submitScore et __listenScores
       if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
-      if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
     onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); });
-    // Expose pour module
     window.renderAll = renderAll;
   </script>
 
-  <!-- ===== Firestore (module) : auth anonyme + listeners + transactions ===== -->
+  <!-- Firestore (module) -->
   <script type="module">
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
@@ -294,7 +284,6 @@
     const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
     const myIndexURL = qs.get('my');
 
-    // Config Firebase
     const cfg = (window.__FIREBASE_CONFIG || {}).apiKey ? window.__FIREBASE_CONFIG : {
       ...(JSON.parse(localStorage.getItem('FIREBASE_CONFIG') || '{}')),
     };
@@ -308,24 +297,32 @@
 
     function normalizePlayers(soireeData){
       if (!soireeData) return [];
-      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: p.name || String(p) }));
+      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
       if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
-      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id }));
+      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
       return [];
-    }
-
-    function passRuleForRound(round){
-      const rules = ['A droite', 'A gauche', 'Au centre', 'Garde tes cartes'];
-      return rules[(round-1)%4];
     }
 
     async function ensureAuth(){
       return new Promise((resolve)=>{
-        onAuthStateChanged(auth, async (user)=>{
+        const a = getAuth();
+        onAuthStateChanged(a, async (user)=>{
+          if (!localStorage.getItem('deviceId')){
+            const devIdCandidate = user?.uid || String(Date.now());
+            try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
+          }
+          window.__STATE.deviceId = localStorage.getItem('deviceId');
           if (user) return resolve(user);
-          try { const cred = await signInAnonymously(auth); resolve(cred.user); }
+          try { const cred = await signInAnonymously(a);
+            if (!localStorage.getItem('deviceId')){
+              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+            }
+            window.__STATE.deviceId = localStorage.getItem('deviceId');
+            resolve(cred.user); }
           catch(err){ console.error('[Auth] Anonyme échouée', err); resolve(null); }
         });
+      });
+    });
       });
     }
 
@@ -335,18 +332,12 @@
       const snap = await getDoc(ref);
       if (snap.exists()) return;
       const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      await setDoc(ref, {
-        createdAt: serverTimestamp(),
-        soireeCode: soireeCode || null,
-        round: 1,
-        dealerIndex: 0,
-        totals,
-      });
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: 0, totals });
       console.log('[Seed] scores_dame_de_pique créé');
     }
 
     function listenSoiree(){
-      if (!soireeCode) return;
+      if (!soireeCode) return () => {};
       const sref = doc(db, 'soirees', soireeCode);
       return onSnapshot(sref, async (snap)=>{
         if (!snap.exists()) { console.warn('soiree introuvable:', soireeCode); return; }
@@ -357,13 +348,23 @@
         if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
         else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
         await seedScoresIfNeeded(window.__STATE.players);
+        // Auto-bind par deviceId
+        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
+        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+        if (needBind && devId){
+          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
+          if (idx>=0){
+            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
+            window.__STATE.myIndex = idx;
+          }
+        }
         window.renderAll?.();
       });
+    });
     }
 
-    // Déclaration unique : listenScores (enhanced)
     function listenScores(){
-      if (!gameId) return;
+      if (!gameId) return () => {};
       const ref = doc(db, 'scores_dame_de_pique', gameId);
       return onSnapshot(ref, (snap)=>{
         if (!snap.exists()) return;
@@ -381,17 +382,17 @@
     }
     window.__listenScores = listenScores;
 
-    // ===== Soumission transactionnelle (exposée globalement) =====
     window.__submitScore = async function submitScore(val){
       if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
-      const state = window.__STATE || {};
-      const pIndex = state.myIndex;
-      if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=state.players.length) {
-        const who = document.getElementById('whoCard'); if (who) who.hidden = false;
+      const s = window.__STATE || {};
+      const pIndex = s.myIndex;
+      if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=s.players.length) {
+        s.pendingScore = val;
+        const who = document.getElementById('whoCard'); if (who) { who.hidden = false; try{ who.scrollIntoView({behavior:'smooth', block:'start'}); }catch{} }
         throw new Error('Index joueur inconnu (my). Choisissez votre nom ci-dessus.');
       }
       if (!gameId) throw new Error('Partie (gid) inconnue');
-      const n = (state.players||[]).length || 0;
+      const n = (s.players||[]).length || 0;
       if (!n) throw new Error('Aucun joueur configuré');
 
       const ref = doc(db, 'scores_dame_de_pique', gameId);
@@ -406,7 +407,6 @@
         const totals = d.totals || {};
         const roundState = {...(d.roundState||{})};
 
-        // Enregistrer/modifier la saisie du joueur courant
         roundState[pIndex] = val;
 
         const submittedCount = Object.keys(roundState).length;
@@ -415,15 +415,14 @@
 
         if (submittedCount < n){
           tx.set(ref, { roundState, roundError: null }, { merge:true });
-          return; // État partiel sauvegardé
+          return;
         }
 
         if (sum !== 25){
-          tx.set(ref, { roundState, roundError: 'Le total n\'est pas 25. Vérifiez et revalidez.' }, { merge:true });
-          return; // On attend correction
+          tx.set(ref, { roundState, roundError: "Le total n'est pas 25. Vérifiez et revalidez." }, { merge:true });
+          return;
         }
 
-        // Grand chelem : 25 et le reste 0 → inverser
         let perRound = values.slice();
         const count25 = values.filter(v=>v===25).length;
         const count0  = values.filter(v=>v===0).length;
@@ -432,8 +431,7 @@
           perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
         }
 
-        // Appliquer au totals
-        const ids = (state.players||[]).map((p,i)=> p.id || `p${i+1}`);
+        const ids = (s.players||[]).map((p,i)=> p.id || `p${i+1}`);
         const newTotals = { ...totals };
         for (let i=0;i<n;i++){
           const pid = ids[i] || `p${i+1}`;
@@ -442,15 +440,9 @@
         }
 
         const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
-        let payload = {
-          totals: newTotals,
-          round: round + 1,
-          dealerIndex: (dealerIndex + 1) % n,
-          roundState: {},
-          roundError: null,
-        };
+        let payload = { totals: newTotals, round: round + 1, dealerIndex: (dealerIndex + 1) % n, roundState: {}, roundError: null };
         if (over){
-          const standings = ids.map((pid,i)=>({ id: pid, name: (state.players[i]?.name||pid), total: newTotals[pid]||0 }))
+          const standings = ids.map((pid,i)=>({ id: pid, name: (s.players[i]?.name||pid), total: newTotals[pid]||0 }))
                                .sort((a,b)=> a.total - b.total);
           payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
         }
