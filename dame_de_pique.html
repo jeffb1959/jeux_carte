@@ -245,18 +245,18 @@
 
     function runUiTests(){
       const checks = [
-        ['dealerName existe', !!$('dealerName')],
-        ['round existe', !!$('round')],
-        ['passInfo existe', !!$('passInfo')],
-        ['totalsList existe', !!$('totalsList')],
-        ['roundStatus existe', !!$('roundStatus')],
-        ['roundError existe', !!$('roundError')],
-        ['btnOpen existe', !!$('btnOpen')],
-        ['modal existe', !!$('modal')],
-        ['btnSaveScore existe', !!$('btnSaveScore')],
-        ['scoreInput existe', !!$('scoreInput')],
+        ['dealerName existe', !!document.getElementById('dealerName')],
+        ['round existe', !!document.getElementById('round')],
+        ['passInfo existe', !!document.getElementById('passInfo')],
+        ['totalsList existe', !!document.getElementById('totalsList')],
+        ['roundStatus existe', !!document.getElementById('roundStatus')],
+        ['roundError existe', !!document.getElementById('roundError')],
+        ['btnOpen existe', !!document.getElementById('btnOpen')],
+        ['modal existe', !!document.getElementById('modal')],
+        ['btnSaveScore existe', !!document.getElementById('btnSaveScore')],
+        ['scoreInput existe', !!document.getElementById('scoreInput')],
       ];
-      const diag = $('diagOutput');
+      const diag = document.getElementById('diagOutput');
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
       if (diag) diag.textContent = text;
 
@@ -266,6 +266,7 @@
       if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
 
       if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
+      if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
     onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); });
