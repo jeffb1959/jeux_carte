@@ -233,10 +233,32 @@
     window.__closeScoreModal = ()=>{ $('modal')?.classList.remove('show'); };
 
     function wireOpenButton(){
-      const btnOpen = $('btnOpen'); if(btnOpen && !btnOpen.__wired){
-        btnOpen.__wired = true; btnOpen.disabled=false; btnOpen.onclick=null;
-        btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); window.__openScoreModal(); }, {capture:true});
+      const btnOpen = $('btnOpen');
+      if (btnOpen && !btnOpen.__wired) {
+        btnOpen.__wired = true;
+        btnOpen.disabled = false;
+        btnOpen.onclick = null;
+        btnOpen.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.__openScoreModal();
+        }, { capture: true });
       }
+
+      document.addEventListener('click', (e) => {
+        const m = $('modal');
+        if (!m || !m.classList.contains('show')) return;
+        const sheet = m.querySelector('.sheet');
+        if (e.target === m && sheet && !sheet.contains(e.target)) {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+    }
       document.addEventListener('click', (e)=>{
         const m = $('modal'); if (!m || !m.classList.contains('show')) return; const sheet = m.querySelector('.sheet');
         if (e.target === m && !sheet.contains(e.target)) window.__closeScoreModal();
@@ -468,7 +490,7 @@
         const v = document.createElement('div'); v.textContent = String(s.total);
         line.appendChild(n); line.appendChild(v); list.appendChild(line);
       });
-      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
+      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';https://github.com/jeffb1959/jeux_carte/blob/main/dame_de_pique.html
       btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
       btn.addEventListener('mouseup', ()=>{
         if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
