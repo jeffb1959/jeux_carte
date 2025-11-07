@@ -242,29 +242,6 @@
           e.preventDefault();
           window.__openScoreModal();
         }, { capture: true });
-      }
-
-      document.addEventListener('click', (e) => {
-        const m = $('modal');
-        if (!m || !m.classList.contains('show')) return;
-        const sheet = m.querySelector('.sheet');
-        if (e.target === m && sheet && !sheet.contains(e.target)) {
-          window.__closeScoreModal();
-        }
-      }, { capture: true });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          window.__closeScoreModal();
-        }
-      }, { capture: true });
-    }
-      document.addEventListener('click', (e)=>{
-        const m = $('modal'); if (!m || !m.classList.contains('show')) return; const sheet = m.querySelector('.sheet');
-        if (e.target === m && !sheet.contains(e.target)) window.__closeScoreModal();
-      }, {capture:true});
-      document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') window.__closeScoreModal(); }, {capture:true});
-    }
 
     function runUiTests(){
       const checks = [
@@ -333,6 +310,22 @@
             const devIdCandidate = user?.uid || String(Date.now());
             try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
           }
+          window.__STATE.deviceId = localStorage.getItem('deviceId');
+          if (user) { resolve(user); return; }
+          try {
+            const cred = await signInAnonymously(a);
+            if (!localStorage.getItem('deviceId')){
+              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+            }
+            window.__STATE.deviceId = localStorage.getItem('deviceId');
+            resolve(cred.user);
+          } catch(err){
+            console.error('[Auth] Anonyme échouée', err);
+            resolve(null);
+          }
+        });
+      });
+    }
           window.__STATE.deviceId = localStorage.getItem('deviceId');
           if (user) return resolve(user);
           try { const cred = await signInAnonymously(a);
@@ -490,7 +483,7 @@
         const v = document.createElement('div'); v.textContent = String(s.total);
         line.appendChild(n); line.appendChild(v); list.appendChild(line);
       });
-      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';https://github.com/jeffb1959/jeux_carte/blob/main/dame_de_pique.html
+      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
       btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
       btn.addEventListener('mouseup', ()=>{
         if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
