@@ -323,11 +323,30 @@
     });
   </script>
 
-  <!-- Firebase config attendue depuis index.html (window.__FIREBASE_CONFIG) -->
+  <!-- Firebase config loader (auto-récupération: window → <script#firebase-config> → localStorage) -->
   <script>
-    // On suppose que index.html a déjà mis window.__FIREBASE_CONFIG
-    if (!window.__FIREBASE_CONFIG) {
-      console.warn('[Config] __FIREBASE_CONFIG manquante — ouvre index.html avant cette page.');
+    // 1) Fenêtre (injectée par index.html)
+    const cfgWin = (window.__FIREBASE_CONFIG && typeof window.__FIREBASE_CONFIG.apiKey==='string') ? window.__FIREBASE_CONFIG : null;
+    // 2) Balise JSON optionnelle
+    let cfgTag=null; try{ const t=document.getElementById('firebase-config'); if(t){ cfgTag=JSON.parse(t.textContent||'{}'); } }catch{}
+    // 3) localStorage
+    let cfgLS=null;  try{ cfgLS=JSON.parse(localStorage.getItem('FIREBASE_CONFIG')||'null'); }catch{}
+
+    const picked = cfgWin || cfgTag || cfgLS || null;
+    if (!picked || !picked.apiKey){
+      console.warn('[Config] Firebase absente — essayez d\'ouvrir index.html d\'abord ou de stocker localStorage.FIREBASE_CONFIG');
+      // Affichage discret
+      (function(){
+        let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:#fff;padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:block'; document.body.appendChild(t);} 
+        t.textContent='⚠️ Config Firebase absente. Ouvrez index.html ou mettez FIREBASE_CONFIG dans localStorage.';
+        setTimeout(()=>{ try{t.remove();}catch{} }, 3000);
+      })();
+      window.__FIREBASE_CONFIG = null;
+    } else {
+      window.__FIREBASE_CONFIG = picked;
+      try{ localStorage.setItem('FIREBASE_CONFIG', JSON.stringify(picked)); }catch{}
+      const d=document.getElementById('diagOutput'); if(d) d.textContent += '
+✅ Firebase config chargée';
     }
   </script>
 
