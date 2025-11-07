@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.2.0 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
+<!-- Dame de Pique — v6.3.0 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -190,7 +190,8 @@
           if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
           setText('modalMsg','Envoi…');
           try{
-            await window.__submitScore?.(val);
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); return; }
+            await window.__submitScore(val);
             setText('modalMsg','Score enregistré.');
             setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); if($('scoreInput')) $('scoreInput').value=''; }, 350);
           }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); }
@@ -385,6 +386,86 @@
       });
       host.appendChild(btn);
     }
+
+    // ===== Soumission transactionnelle (exposée globalement) =====
+    window.__submitScore = async function submitScore(val){
+      if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
+      const state = window.__STATE || {};
+      const pIndex = state.myIndex;
+      if (!Number.isFinite(pIndex) || pIndex<0) throw new Error('Index joueur inconnu (my)');
+      if (!gameId) throw new Error('Partie (gid) inconnue');
+      const n = (state.players||[]).length || 0;
+      if (!n) throw new Error('Aucun joueur configuré');
+
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Document partie introuvable');
+        const d = snap.data();
+        if (d.gameOver) throw new Error('Partie terminée');
+
+        const round = typeof d.round==='number' ? d.round : 1;
+        const dealerIndex = typeof d.dealerIndex==='number' ? d.dealerIndex : 0;
+        const totals = d.totals || {};
+        const roundState = {...(d.roundState||{})};
+
+        // Enregistrer/modifier la saisie du joueur courant
+        roundState[pIndex] = val;
+
+        const submittedCount = Object.keys(roundState).length;
+        const values = Array.from({length:n}, (_,i)=> Number(roundState[i]||0));
+        const sum = values.reduce((a,b)=>a+b, 0);
+
+        if (submittedCount < n){
+          tx.set(ref, { roundState, roundError: null }, { merge:true });
+          return; // État partiel sauvegardé
+        }
+
+        if (sum !== 25){
+          tx.set(ref, { roundState, roundError: 'Le total n\'est pas 25. Vérifiez et revalidez.' }, { merge:true });
+          return; // On attend correction
+        }
+
+        // Grand chelem : 25 et le reste 0 → inverser
+        let perRound = values.slice();
+        const count25 = values.filter(v=>v===25).length;
+        const count0  = values.filter(v=>v===0).length;
+        if (count25===1 && count0===n-1){
+          const idx25 = values.findIndex(v=>v===25);
+          perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
+        }
+
+        // Appliquer au totals
+        const ids = (state.players||[]).map((p,i)=> p.id || `p${i+1}`);
+        const newTotals = { ...totals };
+        for (let i=0;i<n;i++){
+          const pid = ids[i] || `p${i+1}`;
+          const cur = typeof newTotals[pid]==='number' ? newTotals[pid] : 0;
+          newTotals[pid] = cur + (perRound[i]||0);
+        }
+
+        const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
+        let payload = {
+          totals: newTotals,
+          round: round + 1,
+          dealerIndex: (dealerIndex + 1) % n,
+          roundState: {},
+          roundError: null,
+        };
+        if (over){
+          const standings = ids.map((pid,i)=>({ id: pid, name: (state.players[i]?.name||pid), total: newTotals[pid]||0 }))
+                               .sort((a,b)=> a.total - b.total);
+          payload = {
+            ...payload,
+            gameOver: true,
+            finishedAt: serverTimestamp(),
+            standings,
+            winnerId: standings[0]?.id || null,
+          };
+        }
+        tx.set(ref, payload, { merge:true });
+      });
+    };
 
     main();
   </script>
