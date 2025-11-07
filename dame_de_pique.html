@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.3.1 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
+<!-- Dame de Pique — v6.3.4 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -38,7 +38,7 @@
     details.diag>summary{cursor:pointer;color:#9bb3d1}
     .ok{color:var(--ok)}
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
-  .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
+    .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
   </style>
 </head>
@@ -199,8 +199,7 @@
           const totalVal = typeof state.totals[p.id] === 'number' ? state.totals[p.id] : (p.total||0);
           const val = document.createElement('div'); val.textContent = String(totalVal);
           line.appendChild(name); line.appendChild(val); tl.appendChild(line);
-    }
-);
+        });
       }
       const submitted = Object.keys(state.roundScores||{}).length;
       setText('roundStatus', `${submitted}/${state.expected()} soumis`);
@@ -274,9 +273,8 @@
       const okCycle = JSON.stringify(expectedCycle) === JSON.stringify(actualCycle);
       if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
 
-      // Présence de __submitScore
+      // Présence de __submitScore et __listenScores
       if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
-      // Présence de __listenScores (exposé par le module)
       if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
@@ -363,7 +361,7 @@
       });
     }
 
-    // ⚠️ Déclaration unique : listenScores (enhanced)
+    // Déclaration unique : listenScores (enhanced)
     function listenScores(){
       if (!gameId) return;
       const ref = doc(db, 'scores_dame_de_pique', gameId);
@@ -381,49 +379,7 @@
         renderGameOver();
       });
     }
-    // Expose pour diagnostics
     window.__listenScores = listenScores;
-
-    async function main(){
-      try{
-        await ensureAuth();
-        const off1 = listenSoiree();
-        const off2 = listenScores();
-        console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
-        const d = document.getElementById('diagOutput');
-        if (d) d.textContent += `\nFirebase OK — soiree:${soireeCode||'—'} gid:${gameId||'—'}`;
-      }catch(err){
-        console.error('[Firestore] Échec initialisation', err);
-        const d = document.getElementById('diagOutput');
-        if (d) d.textContent += `\n❌ Firestore: ${err?.message||err}`;
-      }
-    }
-
-    function renderGameOver(){
-      let host = document.getElementById('gameOverCard');
-      if (!window.__STATE.gameOver){ if(host) host.remove(); return; }
-      if (!host){
-        host = document.createElement('section');
-        host.className = 'card grid';
-        host.id = 'gameOverCard';
-        document.querySelector('.wrap')?.appendChild(host);
-      }
-      host.innerHTML = '';
-      const h = document.createElement('div'); h.className='lbl'; h.textContent = 'Tableau des honneurs'; host.appendChild(h);
-      const list = document.createElement('div'); list.className='grid'; host.appendChild(list);
-      (window.__STATE.standings||[]).forEach((s,idx)=>{
-        const line = document.createElement('div'); line.className='line';
-        const n = document.createElement('div'); n.textContent = s.name; if(idx===0) n.style.color = '#22c55e';
-        const v = document.createElement('div'); v.textContent = String(s.total);
-        line.appendChild(n); line.appendChild(v); list.appendChild(line);
-      });
-      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
-      btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
-      btn.addEventListener('mouseup', ()=>{
-        if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
-      });
-      host.appendChild(btn);
-    }
 
     // ===== Soumission transactionnelle (exposée globalement) =====
     window.__submitScore = async function submitScore(val){
@@ -431,76 +387,9 @@
       const state = window.__STATE || {};
       const pIndex = state.myIndex;
       if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=state.players.length) {
-        // Propose l'association si manquante
         const who = document.getElementById('whoCard'); if (who) who.hidden = false;
         throw new Error('Index joueur inconnu (my). Choisissez votre nom ci-dessus.');
       }
-      if (!gameId) throw new Error('Partie (gid) inconnue');
-      const n = (state.players||[]).length || 0;
-      if (!n) throw new Error('Aucun joueur configuré');
-
-      const ref = doc(db, 'scores_dame_de_pique', gameId);
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Document partie introuvable');
-        const d = snap.data();
-        if (d.gameOver) throw new Error('Partie terminée');
-
-        const round = typeof d.round==='number' ? d.round : 1;
-        const dealerIndex = typeof d.dealerIndex==='number' ? d.dealerIndex : 0;
-        const totals = d.totals || {};
-        const roundState = {...(d.roundState||{})};
-
-        roundState[pIndex] = val;
-
-        const submittedCount = Object.keys(roundState).length;
-        const values = Array.from({length:n}, (_,i)=> Number(roundState[i]||0));
-        const sum = values.reduce((a,b)=>a+b, 0);
-
-        if (submittedCount < n){
-          tx.set(ref, { roundState, roundError: null }, { merge:true });
-          return;
-        }
-
-        if (sum !== 25){
-          tx.set(ref, { roundState, roundError: 'Le total n\'est pas 25. Vérifiez et revalidez.' }, { merge:true });
-          return;
-        }
-
-        let perRound = values.slice();
-        const count25 = values.filter(v=>v===25).length;
-        const count0  = values.filter(v=>v===0).length;
-        if (count25===1 && count0===n-1){
-          const idx25 = values.findIndex(v=>v===25);
-          perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
-        }
-
-        const ids = (state.players||[]).map((p,i)=> p.id || `p${i+1}`);
-        const newTotals = { ...totals };
-        for (let i=0;i<n;i++){
-          const pid = ids[i] || `p${i+1}`;
-          const cur = typeof newTotals[pid]==='number' ? newTotals[pid] : 0;
-          newTotals[pid] = cur + (perRound[i]||0);
-        }
-
-        const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
-        let payload = {
-          totals: newTotals,
-          round: round + 1,
-          dealerIndex: (dealerIndex + 1) % n,
-          roundState: {},
-          roundError: null,
-        };
-        if (over){
-          const standings = ids.map((pid,i)=>({ id: pid, name: (state.players[i]?.name||pid), total: newTotals[pid]||0 }))
-                               .sort((a,b)=> a.total - b.total);
-          payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
-        }
-        tx.set(ref, payload, { merge:true });
-      });
-    };
-      const pIndex = state.myIndex;
-      if (!Number.isFinite(pIndex) || pIndex<0) throw new Error('Index joueur inconnu (my)');
       if (!gameId) throw new Error('Partie (gid) inconnue');
       const n = (state.players||[]).length || 0;
       if (!n) throw new Error('Aucun joueur configuré');
@@ -563,17 +452,52 @@
         if (over){
           const standings = ids.map((pid,i)=>({ id: pid, name: (state.players[i]?.name||pid), total: newTotals[pid]||0 }))
                                .sort((a,b)=> a.total - b.total);
-          payload = {
-            ...payload,
-            gameOver: true,
-            finishedAt: serverTimestamp(),
-            standings,
-            winnerId: standings[0]?.id || null,
-          };
+          payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
         }
         tx.set(ref, payload, { merge:true });
       });
     };
+
+    function renderGameOver(){
+      let host = document.getElementById('gameOverCard');
+      if (!window.__STATE.gameOver){ if(host) host.remove(); return; }
+      if (!host){
+        host = document.createElement('section');
+        host.className = 'card grid';
+        host.id = 'gameOverCard';
+        document.querySelector('.wrap')?.appendChild(host);
+      }
+      host.innerHTML = '';
+      const h = document.createElement('div'); h.className='lbl'; h.textContent = 'Tableau des honneurs'; host.appendChild(h);
+      const list = document.createElement('div'); list.className='grid'; host.appendChild(list);
+      (window.__STATE.standings||[]).forEach((s,idx)=>{
+        const line = document.createElement('div'); line.className='line';
+        const n = document.createElement('div'); n.textContent = s.name; if(idx===0) n.style.color = '#22c55e';
+        const v = document.createElement('div'); v.textContent = String(s.total);
+        line.appendChild(n); line.appendChild(v); list.appendChild(line);
+      });
+      const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Fin de la partie';
+      btn.addEventListener('mousedown', ()=>{ btn.__holdTs = Date.now(); });
+      btn.addEventListener('mouseup', ()=>{
+        if (Date.now() - (btn.__holdTs||0) >= 2000){ location.href = 'selection_jeux.html'; }
+      });
+      host.appendChild(btn);
+    }
+
+    async function main(){
+      try{
+        await ensureAuth();
+        listenSoiree();
+        listenScores();
+        console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
+        const d = document.getElementById('diagOutput');
+        if (d) d.textContent += `\nFirebase OK — soiree:${soireeCode||'—'} gid:${gameId||'—'}`;
+      }catch(err){
+        console.error('[Firestore] Échec initialisation', err);
+        const d = document.getElementById('diagOutput');
+        if (d) d.textContent += `\n❌ Firestore: ${err?.message||err}`;
+      }
+    }
 
     main();
   </script>
