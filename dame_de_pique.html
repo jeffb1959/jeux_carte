@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.3.3 (stable) -->
+<!-- Dame de Pique — v6.3.5 (document complet, UI + Firestore) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -52,7 +52,7 @@
       </div>
     </header>
 
-    <!-- Association appareil ↔ joueur (si myIndex inconnu) -->
+    <!-- Association appareil ↔ joueur (s'affiche si myIndex inconnu) -->
     <section class="card grid" id="whoCard" hidden>
       <div class="lbl">Associer cet appareil à votre nom</div>
       <div id="whoList" class="grid"></div>
@@ -114,7 +114,7 @@
   <script>
     const $ = (id)=>document.getElementById(id);
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
-    function setText(id, text){ const el=$(id); if(el) el.textContent= text; }
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
     const state = window.__STATE || {
       players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
@@ -170,17 +170,17 @@
             b.className = 'whoBtn';
             b.textContent = p.name + (idx===state.dealerIndex?' (Brasseur)':'');
             b.addEventListener('click', ()=>{
-            try{
-              localStorage.setItem('dame_myIndex', String(idx));
-              state.myIndex = idx;
-              if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
-              renderAll();
-              if (state.pendingScore != null && typeof window.__submitScore === 'function'){
-                const pending = state.pendingScore; state.pendingScore = null;
-                window.__submitScore(pending).catch(()=>{});
-              }
-            }catch(e){ if (whoMsg) whoMsg.textContent = "Impossible de sauvegarder l'association (localStorage)."; }
-          });
+              try{
+                localStorage.setItem('dame_myIndex', String(idx));
+                state.myIndex = idx;
+                if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
+                renderAll();
+                if (state.pendingScore != null && typeof window.__submitScore === 'function'){
+                  const pending = state.pendingScore; state.pendingScore = null;
+                  window.__submitScore(pending).catch(()=>{});
+                }
+              }catch(e){ if (whoMsg) whoMsg.textContent = "Impossible de sauvegarder l'association (localStorage)."; }
+            });
             whoList.appendChild(b);
           });
         } else if (whoMsg) {
@@ -222,7 +222,7 @@
           if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
           setText('modalMsg','Envoi…');
           try{
-            if (typeof window.__submitScore !== 'function') { throw new Error('soumission indisponible'); }
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); return; }
             await window.__submitScore(val);
             setText('modalMsg','Score enregistré.');
             setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; }, 350);
@@ -242,21 +242,38 @@
           e.preventDefault();
           window.__openScoreModal();
         }, { capture: true });
+      }
+
+      document.addEventListener('click', (e) => {
+        const m = $('modal');
+        if (!m || !m.classList.contains('show')) return;
+        const sheet = m.querySelector('.sheet');
+        if (e.target === m && sheet && !sheet.contains(e.target)) {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+    }
 
     function runUiTests(){
       const checks = [
-        ['dealerName existe', !!document.getElementById('dealerName')],
-        ['round existe', !!document.getElementById('round')],
-        ['passInfo existe', !!document.getElementById('passInfo')],
-        ['totalsList existe', !!document.getElementById('totalsList')],
-        ['roundStatus existe', !!document.getElementById('roundStatus')],
-        ['roundError existe', !!document.getElementById('roundError')],
-        ['btnOpen existe', !!document.getElementById('btnOpen')],
-        ['modal existe', !!document.getElementById('modal')],
-        ['btnSaveScore existe', !!document.getElementById('btnSaveScore')],
-        ['scoreInput existe', !!document.getElementById('scoreInput')],
+        ['dealerName existe', !!$('dealerName')],
+        ['round existe', !!$('round')],
+        ['passInfo existe', !!$('passInfo')],
+        ['totalsList existe', !!$('totalsList')],
+        ['roundStatus existe', !!$('roundStatus')],
+        ['roundError existe', !!$('roundError')],
+        ['btnOpen existe', !!$('btnOpen')],
+        ['modal existe', !!$('modal')],
+        ['btnSaveScore existe', !!$('btnSaveScore')],
+        ['scoreInput existe', !!$('scoreInput')],
       ];
-      const diag = document.getElementById('diagOutput');
+      const diag = $('diagOutput');
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
       if (diag) diag.textContent = text;
 
@@ -273,7 +290,7 @@
     window.renderAll = renderAll;
   </script>
 
-  <!-- Firestore (module) -->
+  <!-- Firestore (module) : auth anonyme + listeners + transactions -->
   <script type="module">
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
@@ -327,20 +344,6 @@
         });
       });
     }
-          window.__STATE.deviceId = localStorage.getItem('deviceId');
-          if (user) return resolve(user);
-          try { const cred = await signInAnonymously(a);
-            if (!localStorage.getItem('deviceId')){
-              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
-            }
-            window.__STATE.deviceId = localStorage.getItem('deviceId');
-            resolve(cred.user); }
-          catch(err){ console.error('[Auth] Anonyme échouée', err); resolve(null); }
-        });
-      });
-    });
-      });
-    }
 
     async function seedScoresIfNeeded(players){
       if (!gameId) return;
@@ -364,7 +367,7 @@
         if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
         else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
         await seedScoresIfNeeded(window.__STATE.players);
-        // Auto-bind par deviceId
+        // Auto-bind par deviceId si possible
         const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
         const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
         if (needBind && devId){
@@ -376,7 +379,6 @@
         }
         window.renderAll?.();
       });
-    });
     }
 
     function listenScores(){
