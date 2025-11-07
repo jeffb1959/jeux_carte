@@ -38,6 +38,8 @@
     details.diag>summary{cursor:pointer;color:#9bb3d1}
     .ok{color:var(--ok)}
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
+  .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
+    .whoBtn:hover{filter:brightness(1.05)}
   </style>
 </head>
 <body>
@@ -50,6 +52,13 @@
         <div id="passInfo" class="passTag" title="Règle d'échange du tour">—</div>
       </div>
     </header>
+
+    <!-- Association appareil ↔ joueur (s'affiche si myIndex inconnu) -->
+    <section class="card grid" id="whoCard" hidden>
+      <div class="lbl">Associer cet appareil à votre nom</div>
+      <div id="whoList" class="grid"></div>
+      <div class="lbl" id="whoMsg"></div>
+    </section>
 
     <!-- Section saisie du score -->
     <section class="card grid">
@@ -154,7 +163,35 @@
       setText('dealerName', state.players[state.dealerIndex]?.name || '—');
       setText('passInfo', state.passInfo);
 
-      const tl = $('totalsList'); if (tl){
+      // Affichage association appareil ↔ joueur
+      const who = document.getElementById('whoCard');
+      const whoList = document.getElementById('whoList');
+      const whoMsg = document.getElementById('whoMsg');
+      const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
+      if (who){
+        who.hidden = !needBind;
+        if (needBind && whoList){
+          whoList.innerHTML = '';
+          state.players.forEach((p,idx)=>{
+            const b = document.createElement('button');
+            b.className = 'whoBtn';
+            b.textContent = p.name + (idx===state.dealerIndex?' (Brasseur)':'');
+            b.addEventListener('click', ()=>{
+              try{
+                localStorage.setItem('dame_myIndex', String(idx));
+                state.myIndex = idx;
+                if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
+                renderAll();
+              }catch(e){ if (whoMsg) whoMsg.textContent = 'Impossible de sauvegarder l\'association (localStorage).'; }
+            });
+            whoList.appendChild(b);
+          });
+        } else if (whoMsg) {
+          whoMsg.textContent = '';
+        }
+      }
+
+      const tl = document.getElementById('totalsList'); if (tl){
         tl.innerHTML = '';
         state.players.forEach((p,idx)=>{
           const line = document.createElement('div'); line.className = 'line' + (idx===state.dealerIndex?' dealerBadge':'');
@@ -163,6 +200,19 @@
           const val = document.createElement('div'); val.textContent = String(totalVal);
           line.appendChild(name); line.appendChild(val); tl.appendChild(line);
         });
+      }
+      const submitted = Object.keys(state.roundScores||{}).length;
+      setText('roundStatus', `${submitted}/${state.expected()} soumis`);
+      setText('roundError', state.roundError||'');
+      renderModalList();
+
+      // Fond selon brasseur (seulement sur l'appareil du brasseur)
+      if (state.myIndex === state.dealerIndex) {
+        document.body.style.background = '#0f2e16';
+      } else {
+        document.body.style.background = 'var(--bg)';
+      }
+    });
       }
       const submitted = Object.keys(state.roundScores||{}).length;
       setText('roundStatus', `${submitted}/${state.expected()} soumis`);
@@ -391,6 +441,76 @@
     window.__submitScore = async function submitScore(val){
       if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
       const state = window.__STATE || {};
+      const pIndex = state.myIndex;
+      if (!Number.isFinite(pIndex) || pIndex<0 || pIndex>=state.players.length) {
+        // Propose l'association si manquante
+        const who = document.getElementById('whoCard'); if (who) who.hidden = false;
+        throw new Error('Index joueur inconnu (my). Choisissez votre nom ci-dessus.');
+      }
+      if (!gameId) throw new Error('Partie (gid) inconnue');
+      const n = (state.players||[]).length || 0;
+      if (!n) throw new Error('Aucun joueur configuré');
+
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Document partie introuvable');
+        const d = snap.data();
+        if (d.gameOver) throw new Error('Partie terminée');
+
+        const round = typeof d.round==='number' ? d.round : 1;
+        const dealerIndex = typeof d.dealerIndex==='number' ? d.dealerIndex : 0;
+        const totals = d.totals || {};
+        const roundState = {...(d.roundState||{})};
+
+        roundState[pIndex] = val;
+
+        const submittedCount = Object.keys(roundState).length;
+        const values = Array.from({length:n}, (_,i)=> Number(roundState[i]||0));
+        const sum = values.reduce((a,b)=>a+b, 0);
+
+        if (submittedCount < n){
+          tx.set(ref, { roundState, roundError: null }, { merge:true });
+          return;
+        }
+
+        if (sum !== 25){
+          tx.set(ref, { roundState, roundError: 'Le total n\'est pas 25. Vérifiez et revalidez.' }, { merge:true });
+          return;
+        }
+
+        let perRound = values.slice();
+        const count25 = values.filter(v=>v===25).length;
+        const count0  = values.filter(v=>v===0).length;
+        if (count25===1 && count0===n-1){
+          const idx25 = values.findIndex(v=>v===25);
+          perRound = values.map((v,i)=> i===idx25 ? 0 : 25);
+        }
+
+        const ids = (state.players||[]).map((p,i)=> p.id || `p${i+1}`);
+        const newTotals = { ...totals };
+        for (let i=0;i<n;i++){
+          const pid = ids[i] || `p${i+1}`;
+          const cur = typeof newTotals[pid]==='number' ? newTotals[pid] : 0;
+          newTotals[pid] = cur + (perRound[i]||0);
+        }
+
+        const over = Object.values(newTotals).some(x=> (typeof x==='number') && x>=100);
+        let payload = {
+          totals: newTotals,
+          round: round + 1,
+          dealerIndex: (dealerIndex + 1) % n,
+          roundState: {},
+          roundError: null,
+        };
+        if (over){
+          const standings = ids.map((pid,i)=>({ id: pid, name: (state.players[i]?.name||pid), total: newTotals[pid]||0 }))
+                               .sort((a,b)=> a.total - b.total);
+          payload = { ...payload, gameOver: true, finishedAt: serverTimestamp(), standings, winnerId: standings[0]?.id || null };
+        }
+        tx.set(ref, payload, { merge:true });
+      });
+    };
       const pIndex = state.myIndex;
       if (!Number.isFinite(pIndex) || pIndex<0) throw new Error('Index joueur inconnu (my)');
       if (!gameId) throw new Error('Partie (gid) inconnue');
