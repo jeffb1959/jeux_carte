@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.3.6 (auto-association totale par deviceId, document complet) -->
+<!-- Dame de Pique — v6.4.0 (Finitions: messages, synchro, garde-fous) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -39,6 +39,16 @@
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
     .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
+    /* Status bar + toasts */
+    .status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .dot{inline-size:10px;block-size:10px;border-radius:999px;display:inline-block}
+    .dot.ok{background:#22c55e}
+    .dot.wait{background:#f59e0b}
+    .dot.off{background:#ef4444}
+    .muted{color:#9bb3d1;font-size:.9rem}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:var(--text);padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:none}
+    .toast.show{display:block}
+    .toast.err{border-color:#7f1d1d}
   </style>
 </head>
 <body>
@@ -51,6 +61,14 @@
         <div id="passInfo" class="passTag" title="Règle d'échange du tour">—</div>
       </div>
     </header>
+
+    <!-- Barre de statut (synchro, en ligne, x/y) -->
+    <section class="card status" id="statusBar" aria-live="polite">
+      <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait" title="État de synchronisation"></span>
+      <span id="syncText" class="muted">En attente…</span>
+      <span class="muted" style="margin-left:auto">Soumis: <span id="statusSubmitted">0/0</span></span>
+      <span class="muted">Réseau:</span> <span id="netDot" class="dot off" title="État réseau"></span>
+    </section>
 
     <!-- Association appareil ↔ joueur (s'affiche si myIndex inconnu) -->
     <section class="card grid" id="whoCard" hidden>
@@ -115,6 +133,16 @@
     const $ = (id)=>document.getElementById(id);
     const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
     const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
+
+    // Toast + Synchro + Réseau
+    let __toastTimer=null; function showToast(msg, isErr=false){
+      let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t);} 
+      t.textContent = msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
+      clearTimeout(__toastTimer); __toastTimer=setTimeout(()=> t.classList.remove('show'), 2200);
+    }
+    function setSync(state){ const dot=$('syncDot'); const txt=$('syncText'); if(!dot||!txt) return; if(state==='ok'){ dot.className='dot ok'; txt.textContent='Synchronisé'; } else if(state==='wait'){ dot.className='dot wait'; txt.textContent='En attente…'; } else { dot.className='dot off'; txt.textContent='Hors ligne'; } }
+    function setNet(){ const d=$('netDot'); if(!d) return; d.className = 'dot ' + (navigator.onLine?'ok':'off'); }
+    window.addEventListener('online', setNet); window.addEventListener('offline', ()=>{ setNet(); setSync('off'); }); setNet();
 
     const state = window.__STATE || {
       players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
@@ -201,6 +229,7 @@
       const submitted = Object.keys(state.roundScores||{}).length;
       setText('roundStatus', `${submitted}/${state.expected()} soumis`);
       setText('roundError', state.roundError||'');
+      setText('statusSubmitted', `${submitted}/${state.expected()}`);
       renderModalList();
 
       if (state.myIndex === state.dealerIndex) {
@@ -220,13 +249,13 @@
           const raw = String($('scoreInput')?.value ?? '').trim();
           const val = parseInt(raw,10);
           if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
-          setText('modalMsg','Envoi…');
+          setText('modalMsg','Envoi…'); setSync('wait'); save.setAttribute('disabled','');
           try{
-            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); return; }
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); save.removeAttribute('disabled'); return; }
             await window.__submitScore(val);
-            setText('modalMsg','Score enregistré.');
-            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; }, 350);
-          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); }
+            setText('modalMsg','Score enregistré.'); showToast('Score enregistré');
+            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; save.removeAttribute('disabled'); }, 350);
+          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); showToast(String(err?.message||err), true); save.removeAttribute('disabled'); }
         }, {capture:true});
       }
     };
@@ -286,7 +315,7 @@
       if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
-    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); });
+    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); setSync(navigator.onLine?'ok':'off'); });
     window.renderAll = renderAll;
   </script>
 
@@ -314,35 +343,16 @@
 
     function normalizePlayers(soireeData){
       if (!soireeData) return [];
-      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || p.deviceid || null }));
+      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
       if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
-      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || obj?.device_id || obj?.deviceid || null }));
+      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
       return [];
-    }
-
-    // Auto-association: essaye de lier myIndex au joueur dont deviceId == uid courant
-    function autoBindMyIndex(){
-      const norm = (v)=> (v==null? '': String(v)).trim().toLowerCase();
-      const devCandidates = [
-        window.__STATE.deviceId,
-        (typeof localStorage!=='undefined' ? localStorage.getItem('deviceId') : null),
-        (auth?.currentUser?.uid || null)
-      ].filter(Boolean);
-      const devIdNorm = norm(devCandidates[0]||'');
-      if (!devIdNorm || !Array.isArray(window.__STATE.players)) return false;
-      const idx = window.__STATE.players.findIndex(p => norm(p.deviceId) === devIdNorm);
-      if (idx>=0){
-        try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
-        window.__STATE.myIndex = idx;
-        const who = document.getElementById('whoCard'); if (who) who.hidden = true;
-        return true;
-      }
-      return false;
     }
 
     async function ensureAuth(){
       return new Promise((resolve)=>{
-        onAuthStateChanged(auth, async (user)=>{
+        const a = getAuth();
+        onAuthStateChanged(a, async (user)=>{
           if (!localStorage.getItem('deviceId')){
             const devIdCandidate = user?.uid || String(Date.now());
             try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
@@ -350,7 +360,7 @@
           window.__STATE.deviceId = localStorage.getItem('deviceId');
           if (user) { resolve(user); return; }
           try {
-            const cred = await signInAnonymously(auth);
+            const cred = await signInAnonymously(a);
             if (!localStorage.getItem('deviceId')){
               try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
             }
@@ -386,7 +396,16 @@
         if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
         else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
         await seedScoresIfNeeded(window.__STATE.players);
-        autoBindMyIndex();
+        // Auto-bind par deviceId si possible
+        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
+        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+        if (needBind && devId){
+          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
+          if (idx>=0){
+            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
+            window.__STATE.myIndex = idx;
+          }
+        }
         window.renderAll?.();
       });
     }
@@ -395,6 +414,7 @@
       if (!gameId) return () => {};
       const ref = doc(db, 'scores_dame_de_pique', gameId);
       return onSnapshot(ref, (snap)=>{
+        setSync(navigator.onLine?'ok':'off');
         if (!snap.exists()) return;
         const d = snap.data();
         window.__STATE.round       = d.round || 1;
@@ -435,6 +455,7 @@
         const totals = d.totals || {};
         const roundState = {...(d.roundState||{})};
 
+        // Garde-fou double saisie: si déjà saisi pour ce tour, on remplace mais pas plus d'une fois par tick
         roundState[pIndex] = val;
 
         const submittedCount = Object.keys(roundState).length;
@@ -507,7 +528,6 @@
     async function main(){
       try{
         await ensureAuth();
-        autoBindMyIndex(); // important: réalise l'association aussitôt l'auth prête
         listenSoiree();
         listenScores();
         console.log('[Firestore] Listeners actifs', { soireeCode, gameId });
