@@ -1,10 +1,10 @@
-<!-- Dame de Pique — v6.5.0 (Branche) | Modif: masquer statusBar, whoCard, diag -->
+<!-- Dame de Pique — v6.5.1 (Branche) | Règles: somme=25, grand chelem (détection), fin de partie -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.5.0)</title>
+  <title>Dame de Pique — App (v6.5.2)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -48,8 +48,22 @@
     .toast.show{display:block}
     .toast.err{border-color:#7f1d1d}
 
-    /* 🔒 Masquage imposé (v6.5.0): statusBar, whoCard, diag */
+    /* 🔒 Masquage imposé (v6.5.x): statusBar, whoCard, diag */
     #statusBar, #whoCard, details.diag { display:none !important; }
+
+    /* Bandeau Contrôle */
+    .banner{
+      display:none; position:sticky; bottom:0; left:0; right:0; margin-top:4px;
+      background:#064e3b; border:1px solid #10b981; color:#e7f9f0;
+      border-radius:14px; padding:10px 12px; font-weight:800; text-align:center;
+      box-shadow:0 8px 24px rgba(0,0,0,.25)
+    }
+    .banner.show{ display:block }
+    .banner small{ display:block; font-weight:600; opacity:.9 }
+      /* Bouton retour – animation de maintien (2s) */
+    #btnReturn{ position:relative; overflow:hidden; }
+    #btnReturn .fill{ position:absolute; left:0; top:0; height:100%; width:0; background:rgba(255,255,255,.2); transition: width 2s linear; pointer-events:none; }
+    #btnReturn span{ position:relative; z-index:1; }
   </style>
 </head>
 <body>
@@ -63,7 +77,7 @@
       </div>
     </header>
 
-    <!-- Barre de statut (synchro, en ligne, x/y)  ➜ masquée en v6.5.0 via CSS -->
+    <!-- Barre de statut (synchro, en ligne, x/y)  ➜ masquée en v6.5.x via CSS -->
     <section class="card status" id="statusBar" aria-live="polite">
       <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait" title="État de synchronisation"></span>
       <span id="syncText" class="muted">En attente…</span>
@@ -71,7 +85,7 @@
       <span class="muted">Réseau:</span> <span id="netDot" class="dot off" title="État réseau"></span>
     </section>
 
-    <!-- Association appareil ↔ joueur (masqué en v6.5.0 via CSS) -->
+    <!-- Association appareil ↔ joueur (masqué en v6.5.x via CSS) -->
     <section class="card grid" id="whoCard">
       <div class="lbl">Associer cet appareil à votre nom</div>
       <div id="whoList" class="grid"></div>
@@ -93,6 +107,18 @@
       <div class="lbl danger" id="roundError" aria-live="assertive"></div>
     </section>
 
+    <div id="bannerControle" class="banner" role="status" aria-live="polite">
+      Contrôle par <span id="controleName">—</span> !
+      <small>(25 • 0 • 0 • 0)</small>
+    </div>
+
+    <div id="btnReturnContainer" style="display:none; text-align:center;">
+      <button id="btnReturn" style="background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
+        <div class="fill"></div>
+        <span>Retour à la sélection (maintenir 2s)</span>
+      </button>
+    </div>
+
     <div class="footer">
       <a class="back" href="#">← Retour</a>
     </div>
@@ -110,7 +136,7 @@
       </div>
     </div>
 
-    <!-- Diagnostics (masqué en v6.5.0 via CSS) -->
+    <!-- Diagnostics (masqué en v6.5.x via CSS) -->
     <details class="diag" id="diag" open>
       <summary>Diagnostics / tests</summary>
       <div id="diagOutput" class="lbl"></div>
@@ -162,6 +188,7 @@
       pendingScore: null,
     };
     window.__STATE = state;
+    state.lastRound = state.lastRound ?? null;
 
     function passRuleForRound(round){
       const rules = ['A droite', 'A gauche', 'Au centre', 'Garde tes cartes'];
@@ -233,6 +260,20 @@
       setText('roundError', state.roundError||'');
       setText('statusSubmitted', `${submitted}/${state.expected()}`);
       renderModalList();
+
+      // Bannière Contrôle (affichée si grand chelem, nommé "Contrôle")
+      const banner = document.getElementById('bannerControle');
+      const idxCtrl = state.lastRound?.controleIndex;
+      if (banner){
+        if (state.lastRound?.appliedGrandChelem === true && Number.isInteger(idxCtrl) && idxCtrl>=0 && idxCtrl<state.players.length){
+          const name = state.players[idxCtrl]?.name || '—';
+          const elName = document.getElementById('controleName');
+          if (elName) elName.textContent = name;
+          banner.classList.add('show');
+        } else {
+          banner.classList.remove('show');
+        }
+      }
 
       if (state.myIndex === state.dealerIndex) {
         document.body.style.background = '#0f2e16';
@@ -306,7 +347,7 @@
       ];
       const diag = $('diagOutput');
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
-      if (diag) diag.textContent = text + '\n(v6.5.0: certaines cards sont masquées)';
+      if (diag) diag.textContent = text + '\n(v6.5.1: cards masquées + validations tour)';
 
       const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
       const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
@@ -321,7 +362,7 @@
     window.renderAll = renderAll;
   </script>
 
-  <!-- Firestore (module) : auth + listeners + transactions (inchangé) -->
+  <!-- Firestore (module) : auth + listeners + transactions (ajout validations) -->
   <script type="module">
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
@@ -382,7 +423,8 @@
       const snap = await getDoc(ref);
       if (snap.exists()) return;
       const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: 0, totals });
+      const dealerSeed = (typeof window.__STATE.dealerIndex === 'number' && window.__STATE.dealerIndex >= 0) ? window.__STATE.dealerIndex : 0;
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals });
       console.log('[Seed] scores_dame_de_pique créé');
     }
 
@@ -408,6 +450,28 @@
             window.__STATE.myIndex = idx;
           }
         }
+        if (window.__STATE.gameOver === true){
+          const ctn = document.getElementById('btnReturnContainer');
+          if (ctn) ctn.style.display='block';
+        }
+
+        const btnRet=document.getElementById('btnReturn');
+        if(btnRet && !btnRet.__wired){
+          btnRet.__wired=true;
+          let holdTimer=null;
+          const fill = btnRet.querySelector('.fill');
+          const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
+            holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
+          };
+          const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
+          btnRet.addEventListener('mousedown',start);
+          btnRet.addEventListener('mouseup',cancel);
+          btnRet.addEventListener('mouseleave',cancel);
+          btnRet.addEventListener('touchstart',start,{passive:false});
+          btnRet.addEventListener('touchend',cancel);
+          btnRet.addEventListener('touchcancel',cancel);
+        }
+
         window.renderAll?.();
       });
     }
@@ -426,55 +490,117 @@
         window.__STATE.roundError  = d.roundError || '';
         window.__STATE.gameOver    = !!d.gameOver;
         window.__STATE.standings   = d.standings || [];
+        window.__STATE.lastRound   = d.lastRound || null;
         window.renderAll?.();
       });
     }
     window.__listenScores = listenScores;
 
     window.__submitScore = async function submitScore(val){
-      if (!Number.isFinite(val) || val<0 || val>25) throw new Error('Score invalide (0–25)');
+      // ✅ Version restaurée (règles d'origine) — somme=25, grand chelem, fin à 100
+      if (!Number.isFinite(val) || val < 0 || val > 25) throw new Error('Score invalide (0–25)');
       if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
       setSync('wait');
       const ref = doc(db, 'scores_dame_de_pique', gameId);
-      try{
-        await runTransaction(db, async (tx)=>{
+      try {
+        await runTransaction(db, async (tx) => {
           const snap = await tx.get(ref);
           if (!snap.exists()) throw new Error('Partie introuvable');
-          const d = snap.data()||{};
-          const round = (typeof d.round==='number' && d.round>0) ? d.round : 1;
-          const roundState = {...(d.roundState||{})};
-          const totals = {...(d.totals||{})};
+          const d = snap.data() || {};
 
-          // Détermine l'index local si inconnu
+          const TOTAL_PER_ROUND = 25;   // règle fixe d'origine
+          const END_AT = 100;           // fin de partie à 100 par défaut
+
+          const round = (typeof d.round === 'number' && d.round > 0) ? d.round : 1;
+          const roundState = { ...(d.roundState || {}) };
+          const totals = { ...(d.totals || {}) };
+
+          // Déterminer l'index local si non fixé
           let idx = window.__STATE.myIndex;
-          if (!(Number.isFinite(idx) && idx>=0 && idx<window.__STATE.players.length)){
+          if (!(Number.isFinite(idx) && idx >= 0 && idx < window.__STATE.players.length)) {
             const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
-            if (devId){
-              idx = window.__STATE.players.findIndex(p => (p.deviceId && p.deviceId===devId));
+            if (devId) {
+              idx = window.__STATE.players.findIndex(p => (p.deviceId && p.deviceId === devId));
             }
           }
-          if (!(Number.isFinite(idx) && idx>=0 && idx<window.__STATE.players.length)){
-            throw new Error("Associez cet appareil à votre nom (section masquée en v6.5.0, association auto conseillée).");
+          if (!(Number.isFinite(idx) && idx >= 0 && idx < window.__STATE.players.length)) {
+            throw new Error("Associez cet appareil à votre nom.");
           }
 
+          // Enregistrer le score du joueur courant
           roundState[idx] = Number(val);
 
           const expected = window.__STATE.players.length;
           const submitted = Object.keys(roundState).length;
 
-          if (submitted === expected){
-            // Fin de tour: addition et passage au suivant
-            const ids = window.__STATE.players.map(p=>p.id);
-            ids.forEach((pid, i)=>{ totals[pid] = Number(totals[pid]||0) + Number(roundState[i]||0); });
-            const nextRound = round + 1;
-            const nextDealer = (typeof d.dealerIndex==='number') ? ((d.dealerIndex+1) % expected) : ((window.__STATE.dealerIndex+1) % expected);
-            tx.update(ref, { round: nextRound, dealerIndex: nextDealer, totals, roundState: {}, roundError: '' });
-          } else {
-            tx.update(ref, { roundState, roundError: '' });
+          // Tant que tout le monde n'a pas soumis → on sauvegarde l'état courant
+          if (submitted < expected) {
+            tx.set(ref, { roundState, roundError: '' }, { merge: true });
+            return;
           }
+
+          // Tous ont soumis → validations d'origine
+          const values = Array.from({ length: expected }, (_, i) => Number(roundState[i] || 0));
+          const sum = values.reduce((a, b) => a + b, 0);
+
+          // 1) Somme exacte = 25
+          if (sum !== TOTAL_PER_ROUND) {
+            tx.set(ref, { roundState, roundError: `Le total des scores (${sum}) doit être ${TOTAL_PER_ROUND}.` }, { merge: true });
+            throw new Error(`Somme invalide (${sum} ≠ ${TOTAL_PER_ROUND}).`);
+          }
+
+          // 2) Grand chelem (1 joueur à 25, les autres à 0) → redistribution d'origine
+          const count25 = values.filter(v => v === TOTAL_PER_ROUND).length;
+          const count0  = values.filter(v => v === 0).length;
+          let appliedGrandChelem = false;
+          let perRound = [...values];
+          let controleIndex = -1;
+          if (count25 === 1 && count0 === (expected - 1)) {
+            controleIndex = values.findIndex(v => v === TOTAL_PER_ROUND);
+            perRound = values.map((v, i) => (i === controleIndex ? 0 : TOTAL_PER_ROUND));
+            appliedGrandChelem = true;
+          }
+
+          // 3) Application aux totaux
+          const ids = window.__STATE.players.map(p => p.id);
+          ids.forEach((pid, i) => {
+            totals[pid] = Number(totals[pid] || 0) + Number(perRound[i] || 0);
+          });
+
+          // 4) Fin de partie ?
+          let gameOver = false;
+          let standings = [];
+          let winnerId = null;
+          if (ids.some(pid => Number(totals[pid] || 0) >= END_AT)) {
+            gameOver = true;
+            standings = ids
+              .map((pid, i) => ({ pid, name: window.__STATE.players[i]?.name || pid, score: Number(totals[pid] || 0) }))
+              .sort((a, b) => a.score - b.score);
+            winnerId = standings[0]?.pid || null; // plus petit score gagne
+          }
+
+          const nextRound = round + 1;
+          const nextDealer = (typeof d.dealerIndex === 'number')
+            ? ((d.dealerIndex + 1) % expected)
+            : ((window.__STATE.dealerIndex + 1) % expected);
+
+          tx.set(ref, {
+            totals,
+            roundState: {},
+            roundError: '',
+            round: gameOver ? round : nextRound,
+            dealerIndex: gameOver ? (typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex) : nextDealer,
+            gameOver,
+            standings,
+            winnerId,
+            lastRound: { values, perRound, sum, appliedGrandChelem, controleIndex, round }
+          }, { merge: true });
         });
         setSync('ok');
-      }catch(err){ setSync('off'); throw err; }
+      } catch (err) {
+        setSync('off');
+        throw err;
+      }
     };
 
     onAuthStateChanged(auth, async (user)=>{
