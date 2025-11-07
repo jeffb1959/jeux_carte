@@ -1,4 +1,4 @@
-<!-- Dame de Pique — v6.3.0 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
+<!-- Dame de Pique — v6.3.1 (Étape 3-4 stabilisée: un seul listenScores, transactions + tests) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -199,20 +199,8 @@
           const totalVal = typeof state.totals[p.id] === 'number' ? state.totals[p.id] : (p.total||0);
           const val = document.createElement('div'); val.textContent = String(totalVal);
           line.appendChild(name); line.appendChild(val); tl.appendChild(line);
-        });
-      }
-      const submitted = Object.keys(state.roundScores||{}).length;
-      setText('roundStatus', `${submitted}/${state.expected()} soumis`);
-      setText('roundError', state.roundError||'');
-      renderModalList();
-
-      // Fond selon brasseur (seulement sur l'appareil du brasseur)
-      if (state.myIndex === state.dealerIndex) {
-        document.body.style.background = '#0f2e16';
-      } else {
-        document.body.style.background = 'var(--bg)';
-      }
-    });
+    }
+);
       }
       const submitted = Object.keys(state.roundScores||{}).length;
       setText('roundStatus', `${submitted}/${state.expected()} soumis`);
