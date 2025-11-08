@@ -1,10 +1,3 @@
-<!-- Version: v6.8.5 (2025-11-08)
-Modifications:
-- Fusion fin de partie hôte: scores_dame_de_pique/{gid} -> state:'done', archivedTotals, finishedAt
-- Nettoyage soirees/{code}: status:'setup', suppression currentGame, lastEndedGame
-- Redirection automatique des autres joueurs dès state==='done' (préserve ?code=...)
-- Filet de sécurité: redirection si soirees.currentGame disparaît
--->
 <!-- Dame de Pique — v6.7.0 (Hotfix)
   - Fix: SyntaxError due to stray/mismatched braces in <script type="module">
   - Fix: import updateDoc (was used but not imported)
@@ -16,7 +9,7 @@ Modifications:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.5)</title>
+  <title>Dame de Pique — App (v6.7.0)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -649,10 +642,10 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     });
   </script>
 
-<!-- v6.8.5 fused patch (2025-11-08): host finish + invitee auto-redirect + soiree cleanup -->
+<!-- Patch anti-yo-yo + cleanup soiree v6.8.3 (2025-11-08) -->
 <script type="module">
   import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
-  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
   const app = getApps()[0];
   const db  = getFirestore(app);
@@ -675,7 +668,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
         archivedTotals: totals,
         finishedAt: serverTimestamp()
       });
-    } catch (e) { console.warn('[v6.8.5] scores update failed', e); }
+    } catch (e) { console.warn('[v6.8.3] scores update failed', e); }
   }
 
   async function cleanupSoiree() {
@@ -683,55 +676,58 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     try {
       const sref = doc(db, 'soirees', codeId);
       await updateDoc(sref, {
-        status: 'setup',
-        currentGame: deleteField(),
+        status: 'setup',             // prêt pour relancer un autre jeu
+        currentGame: deleteField(),  // supprime la référence à la partie en cours
         lastEndedGame: { type: 'dame_de_pique', gid, endedAt: serverTimestamp() }
       });
-    } catch (e) { console.warn('[v6.8.5] soiree cleanup failed', e); }
+    } catch (e) { console.warn('[v6.8.3] soiree cleanup failed', e); }
   }
 
-  async function finishHostFlow() {
-    await markScoresDone();
-    await cleanupSoiree();
+  async function finishCleanPlus() {
+    await markScoresDone();    // 1) Marque la partie comme terminée
+    await cleanupSoiree();     // 2) Nettoie la soiree pour empêcher la redirection
+
+    // 3) Pose le drapeau local + nettoie
     try { localStorage.setItem(finishedKey(gid || 'unknown'), '1'); } catch {}
-    try { localStorage.removeItem('dame_gid'); } catch {}
+    try { localStorage.removeItem('dame_gid'); localStorage.removeItem('dame_myIndex'); } catch {}
+
+    // 4) Stoppe un éventuel listener
     try { window.unsubscribeMain?.(); } catch {}
-    const target = codeId ? `selection_jeux.html?code=${codeId}` : 'selection_jeux.html';
-    location.replace(target);
+
+    // 5) Redirection sans params
+    location.replace('selection_jeux.html');
   }
 
-  (function bindFinish(){
-    const btn = document.getElementById('btnReturn');
-    if (btn && !btn.__v685Bound) {
-      btn.__v685Bound = true;
-      btn.addEventListener('click', (ev)=>{ ev.preventDefault(); finishHostFlow(); }, { capture:true });
+  // Accrocher le bouton existant #btnReturn (évite double-binding avec un flag distinct)
+  const btn = document.getElementById('btnReturn');
+  if (btn && !btn.__finishPatched683) {
+    btn.__finishPatched683 = true;
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
+  }
+
+  // Sécurité si l'onglet revient
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try {
+        if (gid && localStorage.getItem(finishedKey(gid))) {
+          if (location.pathname.endsWith('dame_de_pique.html')) {
+            location.replace('selection_jeux.html');
+          }
+        }
+      } catch {}
     }
-  })();
+  }, { passive: true });
 
-  (function listenScoresDone(){
-    if (!gid) return;
-    const ref = doc(db, 'scores_dame_de_pique', gid);
-    onSnapshot(ref, (snap)=>{
-      const data = snap.data && snap.data();
-      if (data && data.state === 'done') {
-        try { localStorage.setItem(finishedKey(gid), '1'); } catch {}
-        const target = codeId ? `selection_jeux.html?code=${codeId}` : 'selection_jeux.html';
-        location.replace(target);
+  // Garde optionnelle pour onSnapshot
+  window.__antiYoyoGuard = function(data){
+    try {
+      if (data?.state === 'done' && localStorage.getItem(finishedKey(gid))) {
+        window.unsubscribeMain?.();
+        return true;
       }
-    });
-  })();
-
-  (function listenSoiree(){
-    if (!codeId) return;
-    const sref = doc(db, 'soirees', codeId);
-    onSnapshot(sref, (snap)=>{
-      const sdata = snap.data && snap.data();
-      if (sdata && !sdata.currentGame) {
-        const target = codeId ? `selection_jeux.html?code=${codeId}` : 'selection_jeux.html';
-        location.replace(target);
-      }
-    });
-  })();
+    } catch {}
+    return false;
+  };
 </script>
 
 </body>
