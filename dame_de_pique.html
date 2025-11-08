@@ -642,92 +642,26 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     });
   </script>
 
-<!-- Patch anti-yo-yo + cleanup soiree v6.8.3 (2025-11-08) -->
+<!-- Option A patch v6.8.4 (fallback) -->
 <script type="module">
   import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
-  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
-
+  import { getFirestore, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
   const app = getApps()[0];
   const db  = getFirestore(app);
-
-  const qs     = new URLSearchParams(location.search);
-  const gid    = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
-  const codeId = qs.get('code') || localStorage.getItem('dame_code') || '';
-
-  const finishedKey = (g)=> `dame_finished_gid_${g}`;
-
-  async function markScoresDone() {
-    if (!gid) return;
-    try {
-      const ref  = doc(db, 'scores_dame_de_pique', gid);
-      const snap = await getDoc(ref);
-      const data = snap.exists() ? snap.data() : {};
-      const totals = (data && data.totals) ? data.totals : {};
-      await updateDoc(ref, {
-        state: 'done',
-        archivedTotals: totals,
-        finishedAt: serverTimestamp()
-      });
-    } catch (e) { console.warn('[v6.8.3] scores update failed', e); }
-  }
-
-  async function cleanupSoiree() {
-    if (!codeId) return;
-    try {
-      const sref = doc(db, 'soirees', codeId);
-      await updateDoc(sref, {
-        status: 'setup',             // prêt pour relancer un autre jeu
-        currentGame: deleteField(),  // supprime la référence à la partie en cours
-        lastEndedGame: { type: 'dame_de_pique', gid, endedAt: serverTimestamp() }
-      });
-    } catch (e) { console.warn('[v6.8.3] soiree cleanup failed', e); }
-  }
-
-  async function finishCleanPlus() {
-    await markScoresDone();    // 1) Marque la partie comme terminée
-    await cleanupSoiree();     // 2) Nettoie la soiree pour empêcher la redirection
-
-    // 3) Pose le drapeau local + nettoie
-    try { localStorage.setItem(finishedKey(gid || 'unknown'), '1'); } catch {}
-    try { localStorage.removeItem('dame_gid'); localStorage.removeItem('dame_myIndex'); } catch {}
-
-    // 4) Stoppe un éventuel listener
-    try { window.unsubscribeMain?.(); } catch {}
-
-    // 5) Redirection sans params
-    location.replace('selection_jeux.html');
-  }
-
-  // Accrocher le bouton existant #btnReturn (évite double-binding avec un flag distinct)
-  const btn = document.getElementById('btnReturn');
-  if (btn && !btn.__finishPatched683) {
-    btn.__finishPatched683 = true;
-    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
-  }
-
-  // Sécurité si l'onglet revient
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      try {
-        if (gid && localStorage.getItem(finishedKey(gid))) {
-          if (location.pathname.endsWith('dame_de_pique.html')) {
-            location.replace('selection_jeux.html');
-          }
-        }
-      } catch {}
-    }
-  }, { passive: true });
-
-  // Garde optionnelle pour onSnapshot
-  window.__antiYoyoGuard = function(data){
-    try {
-      if (data?.state === 'done' && localStorage.getItem(finishedKey(gid))) {
-        window.unsubscribeMain?.();
-        return true;
+  const qs  = new URLSearchParams(location.search);
+  const gid = qs.get('gid') || localStorage.getItem('dame_gid') || '';
+  const code = qs.get('code') || localStorage.getItem('dame_code') || '';
+  if (gid) {
+    const ref = doc(db, 'scores_dame_de_pique', gid);
+    onSnapshot(ref, (snap) => {
+      const data = snap.data && snap.data();
+      if (data && data.state === 'done') {
+        try { localStorage.setItem(`dame_finished_gid_${gid}`, '1'); } catch {}
+        const target = code ? `selection_jeux.html?code=${code}` : 'selection_jeux.html';
+        location.replace(target);
       }
-    } catch {}
-    return false;
-  };
+    });
+  }
 </script>
 
 </body>
