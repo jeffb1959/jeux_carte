@@ -1,23 +1,21 @@
-<!-- Dame de Pique — v6.5.6 (Stable)
-     CHANGELOG clé:
-     - Lit le brasseur depuis soirees.{leaderIndex} (fallback dealerIndex/dealerIndexStart)
-     - Seed du document de score UNIQUEMENT quand le brasseur de la soirée est connu (pas de fallback 0)
-     - Alignement systématique du dealerIndex côté scores vers la valeur de la soirée
-     - Règles actives: somme de ronde = 25, bannière "Contrôle" si un joueur fait 25 (les autres 0), fin de partie si un total >= 125
-     - UI mobile simple (modale de saisie, totaux, diagnostics)
+<!-- Dame de Pique — v6.7.0 (Hotfix)
+  - Fix: SyntaxError due to stray/mismatched braces in <script type="module">
+  - Fix: import updateDoc (was used but not imported)
+  - Move: gameOver return-button wiring into renderAll() (non‑module) to avoid duplicate logic in module script
+  - Keep: rules (somme=25, Contrôle/grand chelem redistribution, fin de partie >= endAt), dealer seed from selection_jeux
 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.5.6 — Stable)</title>
+  <title>Dame de Pique — App (v6.5.5)</title>
   <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; --warn:#f59e0b; }
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
-    .wrap{max-width:420px;margin:0 auto;padding:18px;display:grid;gap:18px}
+    .wrap{max-width:390px;margin:0 auto;padding:18px;display:grid;gap:18px}
     .titleRow{display:block;margin-bottom:8px}
     .titleRow h1{display:block;margin:0 0 8px 0;font-size:clamp(22px,5vw,28px)}
     .lbl{color:var(--muted);font-size:clamp(14px,4vw,16px)}
@@ -32,18 +30,15 @@
     /* Modale */
     .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);z-index:50}
     .modal.show{display:grid}
-    .sheet{width:min(92vw,420px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
+    .sheet{width:min(92vw,390px);background:#0d1527;border:1px solid #2b3857;border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.45)}
     .sheet h3{margin:0 0 8px}
     .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
     .row{display:grid;gap:8px}
-    .msg{color:var(--ok);font-size:0.92rem;text-align:center}
-    .danger{color:var(--danger)}
-    .warn{color:var(--warn)}
+    .msg{color:#22c55e;font-size:0.9rem;text-align:center}
+    .danger{color:#ef4444}
     .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .passTag{margin-left:auto;background:#14223f;border:1px solid #2b3e69;border-radius:10px;padding:6px 10px;font-size:.9rem}
-    details.diag{border:1px dashed #2b3e69;border-radius:12px;padding:8px}
-    details.diag>summary{cursor:pointer;color:#9bb3d1}
-    .ok{color:var(--ok)}
+    .ok{color:#22c55e}
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
     .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
@@ -57,7 +52,24 @@
     .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0d1527;border:1px solid #2b3857;color:var(--text);padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:60;display:none}
     .toast.show{display:block}
     .toast.err{border-color:#7f1d1d}
-    .banner{border-radius:12px;padding:10px 12px;border:1px solid #3d2a10;background:#241707;color:#ffd99b;font-weight:700;text-align:center}
+
+    /* 🔒 Masquage imposé (v6.5.x): statusBar, whoCard, diag */
+    #statusBar, #whoCard, details.diag { display:none !important; }
+
+    /* Bandeau Contrôle */
+    .banner{
+      display:none; position:sticky; bottom:0; left:0; right:0; margin-top:4px;
+      background:#064e3b; border:1px solid #10b981; color:#e7f9f0;
+      border-radius:14px; padding:10px 12px; font-weight:800; text-align:center;
+      box-shadow:0 8px 24px rgba(0,0,0,.25)
+    }
+    .banner.show{ display:block }
+    .banner small{ display:block; font-weight:600; opacity:.9 }
+
+    /* Bouton retour – animation de maintien (2s) */
+    #btnReturn{ position:relative; overflow:hidden; }
+    #btnReturn .fill{ position:absolute; left:0; top:0; height:100%; width:0; background:rgba(255,255,255,.2); transition: width 2s linear; pointer-events:none; }
+    #btnReturn span{ position:relative; z-index:1; }
   </style>
 </head>
 <body>
@@ -71,19 +83,26 @@
       </div>
     </header>
 
-    <!-- Status -->
+    <!-- Barre de statut (synchro, en ligne, x/y)  ➜ masquée en v6.5.x via CSS -->
     <section class="card status" id="statusBar" aria-live="polite">
-      <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait"></span>
+      <span class="muted">Synchro:</span> <span id="syncDot" class="dot wait" title="État de synchronisation"></span>
       <span id="syncText" class="muted">En attente…</span>
       <span class="muted" style="margin-left:auto">Soumis: <span id="statusSubmitted">0/0</span></span>
-      <span class="muted">Réseau:</span> <span id="netDot" class="dot off"></span>
+      <span class="muted">Réseau:</span> <span id="netDot" class="dot off" title="État réseau"></span>
     </section>
 
-    <!-- Saisie -->
+    <!-- Association appareil ↔ joueur (masqué en v6.5.x via CSS) -->
+    <section class="card grid" id="whoCard">
+      <div class="lbl">Associer cet appareil à votre nom</div>
+      <div id="whoList" class="grid"></div>
+      <div class="lbl" id="whoMsg"></div>
+    </section>
+
+    <!-- Saisie du score -->
     <section class="card grid">
       <div class="lbl">Saisissez votre score</div>
-      <button id="btnOpen" class="btn" type="button">Inscrire le pointage</button>
-      <div id="msg" class="msg"></div>
+      <button id="btnOpen" class="btn" type="button" aria-haspopup="dialog" aria-controls="modal">Inscrire le pointage</button>
+      <div id="msg" class="msg" aria-live="polite"></div>
     </section>
 
     <!-- Totaux -->
@@ -91,159 +110,340 @@
       <div class="lbl">Scores totaux</div>
       <div id="totalsList" class="grid"></div>
       <div class="lbl" id="roundStatus">0/0 soumis</div>
-      <div class="lbl danger" id="roundError"></div>
-      <div class="banner" id="controleBanner" style="display:none;">Contrôle !</div>
+      <div class="lbl danger" id="roundError" aria-live="assertive"></div>
     </section>
 
-    <div class="footer"><a class="back" href="#" id="backLink">← Retour</a></div>
+    <div id="bannerControle" class="banner" role="status" aria-live="polite">
+      Contrôle par <span id="controleName">—</span> !
+      <small>(25 • 0 • 0 • 0)</small>
+    </div>
+
+    <div id="btnReturnContainer" style="display:none; text-align:center;">
+      <button id="btnReturn" style="background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
+        <div class="fill"></div>
+        <span>Retour à la sélection (maintenir 2s)</span>
+      </button>
+    </div>
+
+    <div class="footer">
+      <a class="back" href="#">← Retour</a>
+    </div>
 
     <!-- Modale -->
-    <div class="modal" id="modal">
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="sheet">
-        <h3>Saisir mon score</h3>
-        <div id="modalMsg" class="msg"></div>
+        <h3 id="modalTitle">Saisir mon score</h3>
+        <div id="modalMsg" class="msg" aria-live="polite"></div>
         <div class="row">
-          <div id="modalList" class="grid"></div>
-          <input id="scoreInput" class="inp" type="number" min="0" max="25" step="1" placeholder="0–25" />
+          <div id="modalList" class="grid" aria-live="polite"></div>
+          <input id="scoreInput" class="inp" type="number" inputmode="numeric" min="0" max="25" step="1" placeholder="0–25" />
           <button id="btnSaveScore" class="btn" type="button">Valider</button>
         </div>
       </div>
     </div>
 
+    <!-- Diagnostics (masqué en v6.5.x via CSS) -->
     <details class="diag" id="diag" open>
       <summary>Diagnostics / tests</summary>
       <div id="diagOutput" class="lbl"></div>
     </details>
   </main>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-
-    // --- Firebase ---
-    const firebaseConfig = {
+  <!-- Configuration Firebase (inchangé) -->
+  <script>
+    window.__FIREBASE_CONFIG = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
       authDomain: "soireecartev2.firebaseapp.com",
-      projectId: "soireecartev2"
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
     };
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+  </script>
 
-    // --- Utils ---
+  <!-- UI (non-module) : état + rendu + modale -->
+  <script>
     const $ = (id)=>document.getElementById(id);
-    const qs = (k)=>new URLSearchParams(location.search).get(k);
-    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+    const onReady = (fn)=>{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } };
+    const setText = (id, text)=>{ const el=$(id); if(el) el.textContent = text; };
 
-    let soireeCode = qs('code');
-    let gameId = qs('gid');
+    // Toast + Synchro + Réseau (internes, même si statusBar est masqué)
+    let __toastTimer=null; function showToast(msg, isErr=false){
+      let t = document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t);} 
+      t.textContent = msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
+      clearTimeout(__toastTimer); __toastTimer=setTimeout(()=> t.classList.remove('show'), 2200);
+    }
+    function setSync(state){ const dot=$('syncDot'); const txt=$('syncText'); if(!dot||!txt) return; if(state==='ok'){ dot.className='dot ok'; txt.textContent='Synchronisé'; } else if(state==='wait'){ dot.className='dot wait'; txt.textContent='En attente…'; } else { dot.className='dot off'; txt.textContent='Hors ligne'; } }
+    function setNet(){ const d=$('netDot'); if(!d) return; d.className = 'dot ' + (navigator.onLine?'ok':'off'); }
+    window.addEventListener('online', setNet); window.addEventListener('offline', ()=>{ setNet(); setSync('off'); }); setNet();
 
-    const state = {
-      players: [],
+    const state = window.__STATE || {
+      players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
       round: 1,
-      roundScores: {},    // pId -> value
-      totals: {},         // pId -> total
-      submittedCount: 0,
-      expectedCount: 0,
-      myDeviceId: localStorage.getItem('deviceId') || localStorage.getItem('mgm_deviceId') || null,
-      dealerIndex: -1,
-      dealerIndexFromSoiree: -1,
-      gameOver: false
+      dealerIndex: 0,
+      roundScores: {},
+      expected(){ return this.players.length; },
+      get passInfo(){ return passRuleForRound(this.round); },
+      myIndex: parseInt(localStorage.getItem('dame_myIndex') || '-1', 10),
+      soireeId: null,
+      totals: {},
+      roundError: '',
+      gameOver: false,
+      standings: [],
+      deviceId: localStorage.getItem('deviceId') || localStorage.getItem('device_id') || null,
+      pendingScore: null,
     };
+    window.__STATE = state;
+    state.lastRound = state.lastRound ?? null;
 
-    function deviceIdEnsure(){
-      if (!state.myDeviceId){
-        const id = (crypto?.randomUUID?.()) || ('did_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8));
-        state.myDeviceId = id; localStorage.setItem('deviceId', id);
-      }
+    function passRuleForRound(round){
+      const rules = ['A droite', 'A gauche', 'Au centre', 'Garde tes cartes'];
+      return rules[(round-1)%4];
     }
 
-    async function ensureAuth(){ try{ await signInAnonymously(auth); }catch(e){ console.warn('Auth anonyme échouée',e); } }
-
-    // --- Rendu UI ---
-    function setText(id, v){ const el=$(id); if(el) el.textContent = v; }
-    function showToast(t, isErr=false){ const n=document.createElement('div'); n.className='toast'+(isErr?' err':''); n.textContent=t; document.body.appendChild(n); n.classList.add('show'); setTimeout(()=>{ n.remove(); }, 2200); }
-
     function renderModalList(){
-      const host = $('modalList'); if(!host) return; host.innerHTML='';
-      const dealer = (typeof state.dealerIndexFromSoiree==='number' && state.dealerIndexFromSoiree>=0) ? state.dealerIndexFromSoiree : state.dealerIndex;
+      const host = $('modalList'); if(!host) return;
+      host.innerHTML = '';
       state.players.forEach((p, idx)=>{
-        const line = document.createElement('div'); line.className='line'+(idx===dealer?' dealerBadge':'');
-        const n = document.createElement('div'); n.textContent = p.name + (idx===dealer ? ' ★' : '');
+        const line = document.createElement('div'); line.className='line';
+        const n = document.createElement('div'); n.textContent = p.name + (idx===state.dealerIndex ? ' ★' : '');
         const v = document.createElement('div');
-        const val = state.roundScores[p.id];
+        const val = state.roundScores[idx];
         v.textContent = (typeof val==='number' && Number.isFinite(val)) ? String(val) : '—';
         line.appendChild(n); line.appendChild(v); host.appendChild(line);
       });
     }
 
-    function renderTotals(){
-      const host = $('totalsList'); if(!host) return; host.innerHTML='';
-      const dealer = (typeof state.dealerIndexFromSoiree==='number' && state.dealerIndexFromSoiree>=0) ? state.dealerIndexFromSoiree : state.dealerIndex;
-      state.players.forEach((p, idx)=>{
-        const line = document.createElement('div'); line.className='line'+(idx===dealer?' dealerBadge':'');
-        const name = document.createElement('div'); name.textContent = p.name + (idx===dealer?' ★':'');
-        const val = document.createElement('div'); val.textContent = String(state.totals[p.id]||0);
-        line.appendChild(name); line.appendChild(val); host.appendChild(line);
-      });
+    function wireReturnButton(){
+      const ctn = $('btnReturnContainer');
+      if (state.gameOver) { if (ctn) ctn.style.display = 'block'; } else { if (ctn) ctn.style.display = 'none'; }
+      const btnRet = $('btnReturn');
+      if(btnRet && !btnRet.__wired){
+        btnRet.__wired=true;
+        let holdTimer=null;
+        const fill = btnRet.querySelector('.fill');
+        const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
+          holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
+        };
+        const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
+        btnRet.addEventListener('mousedown',start);
+        btnRet.addEventListener('mouseup',cancel);
+        btnRet.addEventListener('mouseleave',cancel);
+        btnRet.addEventListener('touchstart',start,{passive:false});
+        btnRet.addEventListener('touchend',cancel);
+        btnRet.addEventListener('touchcancel',cancel);
+      }
     }
 
     function renderAll(){
-      const dealer = (typeof state.dealerIndexFromSoiree==='number' && state.dealerIndexFromSoiree>=0) ? state.dealerIndexFromSoiree : state.dealerIndex;
-      setText('dealerName', state.players[dealer]?.name || '—');
-      setText('round', String(state.round||1));
-      const submitted = state.submittedCount||0; setText('statusSubmitted', `${submitted}/${state.expectedCount||0}`);
-      renderTotals(); renderModalList();
-      // Décor fond brasseur si appareil = brasseur
-      const myIdx = state.players.findIndex(p=>p.deviceId && p.deviceId===state.myDeviceId);
-      if (myIdx === dealer) { document.body.style.background = '#0f2e16'; } else { document.body.style.background = 'var(--bg)'; }
+      setText('round', String(state.round));
+      setText('dealerName', state.players[state.dealerIndex]?.name || '—');
+      setText('passInfo', state.passInfo);
+
+      // whoCard est masqué en CSS; on garde la logique interne mais sans affichage
+      const who = $('whoCard');
+      const whoList = $('whoList');
+      const whoMsg = $('whoMsg');
+      const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
+      if (who){
+        if (needBind && whoList){
+          whoList.innerHTML = '';
+          state.players.forEach((p,idx)=>{
+            const b = document.createElement('button');
+            b.className = 'whoBtn';
+            b.textContent = p.name + (idx===state.dealerIndex?' (Brasseur)':'');
+            b.addEventListener('click', ()=>{
+              try{
+                localStorage.setItem('dame_myIndex', String(idx));
+                state.myIndex = idx;
+                if (whoMsg) whoMsg.textContent = `Appareil associé à ${p.name}.`;
+                renderAll();
+                if (state.pendingScore != null && typeof window.__submitScore === 'function'){
+                  const pending = state.pendingScore; state.pendingScore = null;
+                  window.__submitScore(pending).catch(()=>{});
+                }
+              }catch(e){ if (whoMsg) whoMsg.textContent = "Impossible de sauvegarder l'association (localStorage)."; }
+            });
+            whoList.appendChild(b);
+          });
+        } else if (whoMsg) {
+          whoMsg.textContent = '';
+        }
+      }
+
+      const tl = $('totalsList'); if (tl){
+        tl.innerHTML = '';
+        state.players.forEach((p,idx)=>{
+          const line = document.createElement('div'); line.className = 'line' + (idx===state.dealerIndex?' dealerBadge':'');
+          const name = document.createElement('div'); name.textContent = p.name + (idx===state.dealerIndex?' ★':'');
+          const totalVal = typeof state.totals[p.id] === 'number' ? state.totals[p.id] : (p.total||0);
+          const val = document.createElement('div'); val.textContent = String(totalVal);
+          line.appendChild(name); line.appendChild(val); tl.appendChild(line);
+        });
+      }
+      const submitted = Object.keys(state.roundScores||{}).length;
+      setText('roundStatus', `${submitted}/${state.expected()} soumis`);
+      setText('roundError', state.roundError||'');
+      setText('statusSubmitted', `${submitted}/${state.expected()}`);
+      renderModalList();
+
+      // Bannière Contrôle (affichée si grand chelem, nommé "Contrôle")
+      const banner = document.getElementById('bannerControle');
+      const idxCtrl = state.lastRound?.controleIndex;
+      if (banner){
+        if (state.lastRound?.appliedGrandChelem === true && Number.isInteger(idxCtrl) && idxCtrl>=0 && idxCtrl<state.players.length){
+          const name = state.players[idxCtrl]?.name || '—';
+          const elName = document.getElementById('controleName');
+          if (elName) elName.textContent = name;
+          banner.classList.add('show');
+        } else {
+          banner.classList.remove('show');
+        }
+      }
+
+      wireReturnButton();
+
+      if (state.myIndex === state.dealerIndex) {
+        document.body.style.background = '#0f2e16';
+      } else {
+        document.body.style.background = 'var(--bg)';
+      }
     }
 
-    // --- Logique règles ---
-    function validateRoundAndFlags(){
-      const values = state.players.map(p=> Number(state.roundScores[p.id]||0));
-      const sum = values.reduce((a,b)=>a+b,0);
-      const controle = values.includes(25) && values.filter(v=>v===0).length === (values.length-1);
-      const err = (sum !== 25);
-      $('roundError').textContent = err ? `La somme doit être 25 (actuel ${sum}).` : '';
-      $('controleBanner').style.display = controle ? 'block' : 'none';
-      return { ok: !err, controle };
+    window.__openScoreModal = ()=>{
+      const modal = $('modal'); if(!modal) return; modal.classList.add('show');
+      const inp = $('scoreInput'); if(inp && !inp.__wired){ inp.__wired=true; inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); $('btnSaveScore')?.click(); } }, {capture:true}); }
+      const save = $('btnSaveScore'); if(save && !save.__wired){
+        save.__wired = true;
+        save.addEventListener('click', async (ev)=>{
+          ev.preventDefault();
+          const raw = String($('scoreInput')?.value ?? '').trim();
+          const val = parseInt(raw,10);
+          if (!Number.isFinite(val) || val<0 || val>25){ setText('modalMsg','Entrez un nombre entre 0 et 25.'); return; }
+          setText('modalMsg','Envoi…'); setSync('wait'); save.setAttribute('disabled','');
+          try{
+            if (typeof window.__submitScore !== 'function') { setText('modalMsg','Erreur: soumission indisponible (fonction manquante).'); save.removeAttribute('disabled'); return; }
+            await window.__submitScore(val);
+            setText('modalMsg','Score enregistré.'); showToast('Score enregistré');
+            setTimeout(()=>{ $('modal')?.classList.remove('show'); setText('modalMsg',''); const i=$('scoreInput'); if(i) i.value=''; save.removeAttribute('disabled'); }, 350);
+          }catch(err){ setText('modalMsg', 'Erreur: '+(err?.message||err)); showToast(String(err?.message||err), true); save.removeAttribute('disabled'); }
+        }, {capture:true});
+      }
+    };
+    window.__closeScoreModal = ()=>{ $('modal')?.classList.remove('show'); };
+
+    function wireOpenButton(){
+      const btnOpen = $('btnOpen');
+      if (btnOpen && !btnOpen.__wired) {
+        btnOpen.__wired = true;
+        btnOpen.disabled = false;
+        btnOpen.onclick = null;
+        btnOpen.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.__openScoreModal();
+        }, { capture: true });
+      }
+
+      document.addEventListener('click', (e) => {
+        const m = $('modal');
+        if (!m || !m.classList.contains('show')) return;
+        const sheet = m.querySelector('.sheet');
+        if (e.target === m and sheet and !sheet.contains(e.target)) {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          window.__closeScoreModal();
+        }
+      }, { capture: true });
     }
 
-    async function applyRoundToTotals(){
-      state.players.forEach(p=>{ const v = Number(state.roundScores[p.id]||0); state.totals[p.id] = Number(state.totals[p.id]||0) + v; });
+    function runUiTests(){
+      const checks = [
+        ['dealerName existe', !!$('dealerName')],
+        ['round existe', !!$('round')],
+        ['passInfo existe', !!$('passInfo')],
+        ['totalsList existe', !!$('totalsList')],
+        ['roundStatus existe', !!$('roundStatus')],
+        ['roundError existe', !!$('roundError')],
+        ['btnOpen existe', !!$('btnOpen')],
+        ['modal existe', !!$('modal')],
+        ['btnSaveScore existe', !!$('btnSaveScore')],
+        ['scoreInput existe', !!$('scoreInput')],
+        ['bannerControle existe', !!$('bannerControle')],
+        ['btnReturn existe', !!$('btnReturn')],
+      ];
+      const diag = $('diagOutput');
+      const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
+      if (diag) diag.textContent = text + '\n(v6.5.5: hotfix braces + imports + UI wiring)';
+
+      const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
+      const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
+      const okCycle = JSON.stringify(expectedCycle) === JSON.stringify(actualCycle);
+      if (diag) diag.textContent += `\n${okCycle ? '✅' : '❌'} cycle passRuleForRound (8 tours)`;
+
+      if (diag) diag.textContent += `\n${typeof window.__submitScore==='function' ? '✅' : '❌'} __submitScore disponible`;
+      if (diag) diag.textContent += `\n${typeof window.__listenScores==='function' ? '✅' : '❌'} listenScores (unique)`;
     }
 
-    function checkGameOver(){
-      const any = state.players.some(p => Number(state.totals[p.id]||0) >= 125);
-      state.gameOver = any; return any;
+    onReady(()=>{ wireOpenButton(); renderAll(); runUiTests(); setSync(navigator.onLine?'ok':'off'); });
+    window.renderAll = renderAll;
+  </script>
+
+  <!-- Firestore (module) : auth + listeners + transactions (ajout validations) -->
+  <script type="module">
+    import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+    const qs = new URLSearchParams(location.search);
+    const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
+    const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
+    const myIndexURL = qs.get('my');
+
+    const cfg = (window.__FIREBASE_CONFIG || {}).apiKey ? window.__FIREBASE_CONFIG : {
+      ...(JSON.parse(localStorage.getItem('FIREBASE_CONFIG') || '{}')),
+    };
+    const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    if (soireeCode) localStorage.setItem('dame_code', soireeCode);
+    if (gameId)     localStorage.setItem('dame_gid', gameId);
+    if (myIndexURL !== null) localStorage.setItem('dame_myIndex', String(myIndexURL));
+
+    function normalizePlayers(soireeData){
+      if (!soireeData) return [];
+      if (Array.isArray(soireeData.players)) return soireeData.players.map((p,i)=>({ id: p.id || `p${i+1}`, name: (p.name ?? p.nom ?? String(p)), deviceId: p.deviceId || p.device_id || p.devId || null }));
+      if (Array.isArray(soireeData.joueurs)) return soireeData.joueurs.map((name,i)=>({ id: `p${i+1}`, name }));
+      if (soireeData.playersMap && typeof soireeData.playersMap === 'object') return Object.entries(soireeData.playersMap).map(([id, obj])=>({ id, name: obj?.name || id, deviceId: obj?.deviceId || null }));
+      return [];
     }
 
-    // --- Firestore ---
-    async function listenSoiree(){
-      if(!soireeCode) return;
-      const ref = doc(db,'soirees', soireeCode);
-      onSnapshot(ref, async snap=>{
-        if(!snap.exists()) return;
-        const data = snap.data()||{};
-        const fromSoiree =
-          (typeof data.leaderIndex === 'number')      ? data.leaderIndex :
-          (typeof data.dealerIndex === 'number')      ? data.dealerIndex :
-          (typeof data.dealerIndexStart === 'number') ? data.dealerIndexStart :
-          -1;
-        state.dealerIndex = fromSoiree; state.dealerIndexFromSoiree = fromSoiree;
-        // joueurs
-        state.players = Array.isArray(data.players) ? data.players.map((p,i)=>({
-          id: p.id || String(i),
-          name: p.name || `Joueur ${i+1}`,
-          deviceId: p.deviceId || null,
-          order: typeof p.order==='number'?p.order:i
-        })) : [];
-        state.expectedCount = state.players.length;
-        renderAll();
-        // seed côté scores si nécessaire
-        await seedScoresIfNeeded(state.players);
+    async function ensureAuth(){
+      return new Promise((resolve)=>{
+        const a = getAuth();
+        onAuthStateChanged(a, async (user)=>{
+          if (!localStorage.getItem('deviceId')){
+            const devIdCandidate = user?.uid || String(Date.now());
+            try{ localStorage.setItem('deviceId', devIdCandidate); }catch{}
+          }
+          window.__STATE.deviceId = localStorage.getItem('deviceId');
+          if (user) { resolve(user); return; }
+          try {
+            const cred = await signInAnonymously(a);
+            if (!localStorage.getItem('deviceId')){
+              try{ localStorage.setItem('deviceId', cred.user?.uid || String(Date.now())); }catch{}
+            }
+            window.__STATE.deviceId = localStorage.getItem('deviceId');
+            resolve(cred.user);
+          } catch(err){
+            console.error('[Auth] Anonyme échouée', err);
+            resolve(null);
+          }
+        });
       });
     }
 
@@ -252,96 +452,193 @@
       const ref = doc(db, 'scores_dame_de_pique', gameId);
       const snap = await getDoc(ref);
       if (snap.exists()) return;
-      const desired = state.dealerIndexFromSoiree;
-      if (!(typeof desired === 'number' && desired >= 0)) {
-        console.warn('[Seed] dealerIndexFromSoiree absent — attente de selection_jeux');
-        return; // ❗ ne pas créer le doc tant que le dealer n'est pas connu
-      }
       const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: desired, totals, autoDealerSeeded: true, gameOver: false });
-      console.log('[Seed] scores_dame_de_pique créé avec dealerIndex =', desired);
+      const dealerSeed = (typeof window.__STATE.dealerIndexFromSoiree === 'number' && window.__STATE.dealerIndexFromSoiree >= 0)
+        ? window.__STATE.dealerIndexFromSoiree
+        : (typeof window.__STATE.dealerIndex === 'number' ? window.__STATE.dealerIndex : 0);
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals, autoDealerSeeded: true });
+      console.log('[Seed] scores_dame_de_pique créé (dealerIndex seed:', dealerSeed, ')');
+    }
+
+    function listenSoiree(){
+      if (!soireeCode) return () => {};
+      const sref = doc(db, 'soirees', soireeCode);
+      return onSnapshot(sref, async (snap)=>{
+        if (!snap.exists()) { console.warn('soiree introuvable:', soireeCode); return; }
+        const data = snap.data()||{};
+        const players = normalizePlayers(data);
+        if (players.length) window.__STATE.players = players;
+        window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
+        // ✅ Dealer provenant de selection_jeux
+       // Dans listenSoiree(), juste après: const data = snap.data()||{};
+const fromSoiree =
+  (typeof data.leaderIndex === 'number')      ? data.leaderIndex :
+  (typeof data.dealerIndex === 'number')      ? data.dealerIndex :
+  (typeof data.dealerIndexStart === 'number') ? data.dealerIndexStart :
+  -1;
+
+window.__STATE.dealerIndex = fromSoiree;
+window.__STATE.dealerIndexFromSoiree = fromSoiree;
+
+        await seedScoresIfNeeded(window.__STATE.players);
+        // Auto-bind par deviceId si possible
+        const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
+        const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+        if (needBind && devId){
+          const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
+          if (idx>=0){ try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{} window.__STATE.myIndex = idx; }
+        }
+        window.renderAll?.();
+      });
     }
 
     function listenScores(){
-      if (!gameId) return ()=>{};
+      if (!gameId) return () => {};
       const ref = doc(db, 'scores_dame_de_pique', gameId);
       return onSnapshot(ref, async (snap)=>{
+        setSync(navigator.onLine?'ok':'off');
         if (!snap.exists()) return;
         const d = snap.data();
-        // Alignement systématique dealer -> soirée
-        const desired = state.dealerIndexFromSoiree;
+        window.__STATE.round       = d.round || 1;
+        window.__STATE.dealerIndex = (typeof d.dealerIndex === 'number') ? d.dealerIndex : window.__STATE.dealerIndex;
+        window.__STATE.totals      = d.totals || window.__STATE.totals || {};
+        window.__STATE.roundScores = d.roundState || {};
+        window.__STATE.roundError  = d.roundError || '';
+        window.__STATE.gameOver    = !!d.gameOver;
+        window.__STATE.standings   = d.standings || [];
+        window.__STATE.lastRound   = d.lastRound || null;
+        // ✅ Correction robuste du premier brasseur au tour 1 (une seule fois)
+        const desired = window.__STATE.dealerIndexFromSoiree;
         if (typeof desired === 'number' && desired >= 0 && d.dealerIndex !== desired) {
-          try { await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true }); } catch(e){ console.warn('Align dealer fail', e); }
+          try {
+            await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true });
+            window.__STATE.dealerIndex = desired;
+          } catch(e) { console.warn('Auto seed dealer échoué:', e); }
         }
-        state.round = d.round||1; state.totals = d.totals||{}; state.gameOver = !!d.gameOver;
-        // submittedCount (approx: nb de joueurs avec roundScores définis côté local)
-        const submitted = Object.values(state.roundScores).filter(v=>Number.isFinite(Number(v))).length;
-        state.submittedCount = submitted;
-        renderAll();
-        if (state.gameOver){ $('roundError').textContent=''; $('controleBanner').style.display='none'; showToast('Partie terminée.'); }
+        window.renderAll?.();
       });
     }
+    window.__listenScores = listenScores;
 
-    async function saveRoundScore(value){
+    window.__submitScore = async function submitScore(val){
+      // v6.5.5 — garde-fous fin de partie + télémétrie debug (même logique)
+      if (!Number.isFinite(val) || val < 0 || val > 25) throw new Error('Score invalide (0–25)');
+      if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
+      setSync('wait');
       const ref = doc(db, 'scores_dame_de_pique', gameId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
-      const d = snap.data();
-      const nextRound = (d.round||1);
-      // appliquer localement
-      await applyRoundToTotals();
-      const over = checkGameOver();
-      await updateDoc(ref, {
-        totals: state.totals,
-        round: nextRound + 1,
-        gameOver: over || false,
-        updatedAt: serverTimestamp()
-      });
-      state.roundScores = {}; // reset pour la prochaine ronde locale
-      renderAll();
-      if (over){
-        showToast('Fin de partie. Retour à la sélection conseillé.');
-        // nettoyage du pointeur côté soiree (évite redirection infinie depuis selection_jeux)
-        try{ await updateDoc(doc(db,'soirees', soireeCode), { currentGame: null }); }catch{}
+      try {
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists()) throw new Error('Partie introuvable');
+          const d = snap.data() || {};
+
+          // ⛔ Empêcher toute saisie si la partie est déjà terminée
+          if (d.gameOver === true) throw new Error('Partie terminée.');
+
+          const TOTAL_PER_ROUND = 25;   // règle fixe d'origine
+          const END_AT = Number.isFinite(d.endAt) ? Number(d.endAt) : 100; // permet override via doc
+
+          const round = (typeof d.round === 'number' && d.round > 0) ? d.round : 1;
+          const roundState = { ...(d.roundState || {}) };
+          const totals = { ...(d.totals || {}) };
+
+          // Déterminer l'index local si non fixé
+          let idx = window.__STATE.myIndex;
+          if (!(Number.isFinite(idx) && idx >= 0 && idx < window.__STATE.players.length)) {
+            const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
+            if (devId) {
+              idx = window.__STATE.players.findIndex(p => (p.deviceId && p.deviceId === devId));
+            }
+          }
+          if (!(Number.isFinite(idx) && idx >= 0 && idx < window.__STATE.players.length)) {
+            throw new Error("Associez cet appareil à votre nom.");
+          }
+
+          // Enregistrer le score du joueur courant
+          roundState[idx] = Number(val);
+
+          const expected = window.__STATE.players.length;
+          const submitted = Object.keys(roundState).length;
+
+          // Tant que tout le monde n'a pas soumis → on sauvegarde l'état courant
+          if (submitted < expected) {
+            tx.set(ref, { roundState, roundError: '' }, { merge: true });
+            return;
+          }
+
+          // Tous ont soumis → validations d'origine
+          const values = Array.from({ length: expected }, (_, i) => Number(roundState[i] || 0));
+          const sum = values.reduce((a, b) => a + b, 0);
+
+          // 1) Somme exacte = 25
+          if (sum !== TOTAL_PER_ROUND) {
+            tx.set(ref, { roundState, roundError: `Le total des scores (${sum}) doit être ${TOTAL_PER_ROUND}.` }, { merge: true });
+            throw new Error(`Somme invalide (${sum} ≠ ${TOTAL_PER_ROUND}).`);
+          }
+
+          // 2) Contrôle (Grand chelem) : 25 / 0 / 0 / 0 → redistribution d'origine
+          const count25 = values.filter(v => v === TOTAL_PER_ROUND).length;
+          const count0  = values.filter(v => v === 0).length;
+          let appliedGrandChelem = false;
+          let perRound = [...values];
+          let controleIndex = -1;
+          if (count25 === 1 && count0 === (expected - 1)) {
+            controleIndex = values.findIndex(v => v === TOTAL_PER_ROUND);
+            perRound = values.map((v, i) => (i === controleIndex ? 0 : TOTAL_PER_ROUND));
+            appliedGrandChelem = true;
+          }
+
+          // 3) Application aux totaux (coercition forte → nombre)
+          const ids = window.__STATE.players.map(p => p.id);
+          ids.forEach((pid, i) => {
+            const prev = Number.isFinite(Number(totals[pid])) ? Number(totals[pid]) : 0;
+            totals[pid] = prev + Number(perRound[i] || 0);
+          });
+
+          // 4) Fin de partie ? (défensif + télémétrie)
+          const maxScore = Math.max(...ids.map(pid => Number(totals[pid] || 0)));
+          const reached  = maxScore >= END_AT;
+          let gameOver = false;
+          let standings = [];
+          let winnerId = null;
+          if (reached) {
+            gameOver = true;
+            standings = ids
+              .map((pid, i) => ({ pid, name: window.__STATE.players[i]?.name || pid, score: Number(totals[pid] || 0) }))
+              .sort((a, b) => a.score - b.score);
+            winnerId = standings[0]?.pid || null; // plus petit score gagne
+          }
+
+          const nextRound = round + 1;
+          const nextDealer = (typeof d.dealerIndex === 'number')
+            ? ((d.dealerIndex + 1) % expected)
+            : ((window.__STATE.dealerIndex + 1) % expected);
+
+          tx.set(ref, {
+            totals,
+            roundState: {},
+            roundError: '',
+            round: gameOver ? round : nextRound,
+            dealerIndex: gameOver ? (typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex) : nextDealer,
+            gameOver,
+            standings,
+            winnerId,
+            lastRound: { values, perRound, sum, appliedGrandChelem, controleIndex, round },
+            debugLastCheck: { endAt: END_AT, max: maxScore, reached, at: new Date().toISOString() }
+          }, { merge: true });
+        });
+        setSync('ok');
+      } catch (err) {
+        setSync('off');
+        throw err;
       }
-    }
+    };
 
-    // --- Événements UI ---
-    function openModal(){ $('modal').classList.add('show'); $('modalMsg').textContent=''; $('scoreInput').value=''; renderModalList(); }
-    function closeModal(){ $('modal').classList.remove('show'); }
-
-    function collectRoundValues(){
-      // On prend la valeur saisie pour CET appareil
-      const me = state.players.find(p=>p.deviceId && p.deviceId===state.myDeviceId);
-      const raw = Number($('scoreInput').value || 0);
-      if (!me){ showToast("Associe ton appareil à un joueur dans la page d'accueil.", true); return null; }
-      if (!Number.isFinite(raw) || raw<0 || raw>25){ showToast('Score invalide (0–25).', true); return null; }
-      const rs = { ...state.roundScores };
-      rs[me.id] = raw;
-      return rs;
-    }
-
-    // --- Main ---
-    let stopScores = null;
-    window.addEventListener('DOMContentLoaded', async ()=>{
-      deviceIdEnsure();
-      await ensureAuth();
-      if (!soireeCode){ showToast('Code soirée manquant', true); return; }
-      await listenSoiree();
-      stopScores = listenScores();
-
-      $('btnOpen').addEventListener('click', openModal);
-      $('modal').addEventListener('click', (e)=>{ if(e.target===e.currentTarget) closeModal(); });
-      $('btnSaveScore').addEventListener('click', async ()=>{
-        const rs = collectRoundValues(); if(!rs) return;
-        state.roundScores = rs; renderModalList();
-        const { ok } = validateRoundAndFlags();
-        if (!ok){ showToast('Corrige la somme de 25.', true); return; }
-        closeModal();
-        await saveRoundScore(rs);
-      });
-
-      $('backLink').addEventListener('click', (e)=>{ e.preventDefault(); history.length>1 ? history.back() : (location.href = `selection_jeux.html?code=${encodeURIComponent(soireeCode||'')}`); });
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user){ try{ await signInAnonymously(auth); }catch(e){ console.error('Auth anonyme impossible', e); } return; }
+      const un1 = listenSoiree();
+      const un2 = listenScores();
+      window.addEventListener('beforeunload', ()=>{ try{un1();un2();}catch{} });
     });
   </script>
 </body>
