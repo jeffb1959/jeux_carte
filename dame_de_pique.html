@@ -1,10 +1,15 @@
-<!-- Dame de Pique — v6.5.1 (Branche) | Règles: somme=25, grand chelem (détection), fin de partie -->
+<!-- Dame de Pique — v6.5.5 (Hotfix)
+  - Fix: SyntaxError due to stray/mismatched braces in <script type="module">
+  - Fix: import updateDoc (was used but not imported)
+  - Move: gameOver return-button wiring into renderAll() (non‑module) to avoid duplicate logic in module script
+  - Keep: rules (somme=25, Contrôle/grand chelem redistribution, fin de partie >= endAt), dealer seed from selection_jeux
+-->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.5.4)</title>
+  <title>Dame de Pique — App (v6.5.5)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -60,7 +65,8 @@
     }
     .banner.show{ display:block }
     .banner small{ display:block; font-weight:600; opacity:.9 }
-      /* Bouton retour – animation de maintien (2s) */
+
+    /* Bouton retour – animation de maintien (2s) */
     #btnReturn{ position:relative; overflow:hidden; }
     #btnReturn .fill{ position:absolute; left:0; top:0; height:100%; width:0; background:rgba(255,255,255,.2); transition: width 2s linear; pointer-events:none; }
     #btnReturn span{ position:relative; z-index:1; }
@@ -208,6 +214,27 @@
       });
     }
 
+    function wireReturnButton(){
+      const ctn = $('btnReturnContainer');
+      if (state.gameOver) { if (ctn) ctn.style.display = 'block'; } else { if (ctn) ctn.style.display = 'none'; }
+      const btnRet = $('btnReturn');
+      if(btnRet && !btnRet.__wired){
+        btnRet.__wired=true;
+        let holdTimer=null;
+        const fill = btnRet.querySelector('.fill');
+        const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
+          holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
+        };
+        const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
+        btnRet.addEventListener('mousedown',start);
+        btnRet.addEventListener('mouseup',cancel);
+        btnRet.addEventListener('mouseleave',cancel);
+        btnRet.addEventListener('touchstart',start,{passive:false});
+        btnRet.addEventListener('touchend',cancel);
+        btnRet.addEventListener('touchcancel',cancel);
+      }
+    }
+
     function renderAll(){
       setText('round', String(state.round));
       setText('dealerName', state.players[state.dealerIndex]?.name || '—');
@@ -219,7 +246,6 @@
       const whoMsg = $('whoMsg');
       const needBind = !(Number.isFinite(state.myIndex) && state.myIndex >= 0 && state.myIndex < state.players.length);
       if (who){
-        // Ne plus modifier who.hidden pour respecter le masquage CSS forcé
         if (needBind && whoList){
           whoList.innerHTML = '';
           state.players.forEach((p,idx)=>{
@@ -274,6 +300,8 @@
           banner.classList.remove('show');
         }
       }
+
+      wireReturnButton();
 
       if (state.myIndex === state.dealerIndex) {
         document.body.style.background = '#0f2e16';
@@ -344,10 +372,12 @@
         ['modal existe', !!$('modal')],
         ['btnSaveScore existe', !!$('btnSaveScore')],
         ['scoreInput existe', !!$('scoreInput')],
+        ['bannerControle existe', !!$('bannerControle')],
+        ['btnReturn existe', !!$('btnReturn')],
       ];
       const diag = $('diagOutput');
       const text = checks.map(([label, ok])=> `${ok ? '✅' : '❌'} ${label}`).join('\n');
-      if (diag) diag.textContent = text + '\n(v6.5.1: cards masquées + validations tour)';
+      if (diag) diag.textContent = text + '\n(v6.5.5: hotfix braces + imports + UI wiring)';
 
       const expectedCycle = ['A droite','A gauche','Au centre','Garde tes cartes','A droite','A gauche','Au centre','Garde tes cartes'];
       const actualCycle = Array.from({length:8}, (_,i)=>passRuleForRound(i+1));
@@ -366,7 +396,7 @@
   <script type="module">
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
     const qs = new URLSearchParams(location.search);
     const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
@@ -454,32 +484,6 @@
         window.renderAll?.();
       });
     }
-        }
-        if (window.__STATE.gameOver === true){
-          const ctn = document.getElementById('btnReturnContainer');
-          if (ctn) ctn.style.display='block';
-        }
-
-        const btnRet=document.getElementById('btnReturn');
-        if(btnRet && !btnRet.__wired){
-          btnRet.__wired=true;
-          let holdTimer=null;
-          const fill = btnRet.querySelector('.fill');
-          const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
-            holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
-          };
-          const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
-          btnRet.addEventListener('mousedown',start);
-          btnRet.addEventListener('mouseup',cancel);
-          btnRet.addEventListener('mouseleave',cancel);
-          btnRet.addEventListener('touchstart',start,{passive:false});
-          btnRet.addEventListener('touchend',cancel);
-          btnRet.addEventListener('touchcancel',cancel);
-        }
-
-        window.renderAll?.();
-      });
-    }
 
     function listenScores(){
       if (!gameId) return () => {};
@@ -500,19 +504,17 @@
         const desired = window.__STATE.dealerIndexFromSoiree;
         if (d.round === 1 && typeof desired === 'number' && desired >= 0 && d.autoDealerSeeded !== true) {
           try {
-            const r = doc(db, 'scores_dame_de_pique', gameId);
-            await updateDoc(r, { dealerIndex: desired, autoDealerSeeded: true });
+            await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true });
             window.__STATE.dealerIndex = desired;
           } catch(e) { console.warn('Auto seed dealer échoué:', e); }
         }
         window.renderAll?.();
       });
-    });
     }
     window.__listenScores = listenScores;
 
     window.__submitScore = async function submitScore(val){
-      // v6.5.3 — garde-fous fin de partie + télémétrie debug
+      // v6.5.5 — garde-fous fin de partie + télémétrie debug (même logique)
       if (!Number.isFinite(val) || val < 0 || val > 25) throw new Error('Score invalide (0–25)');
       if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
       setSync('wait');
