@@ -642,77 +642,76 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     });
   </script>
 
-<!-- Patch v6.8.1 (2025-11-08) : Anti-retour vers la partie après fin + archivage + garde locale -->
-<script>
-(function(){
-  const finishedKey = (gid)=> `dame_finished_gid_${gid}`;
+<!-- Patch anti-yo-yo v6.8.2 (2025-11-08) -->
+<script type="module">
+  import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
-  // Best-effort helpers exported by your existing scripts (if any)
-  const hasFirebaseHelpers = typeof window.firebaseDoc === 'function'
-    && typeof window.firebaseGetDoc === 'function'
-    && typeof window.firebaseUpdateDoc === 'function'
-    && typeof window.firebaseServerTimestamp === 'function'
-    && window.db;
+  const app = getApps()[0];
+  const db  = getFirestore(app);
 
-  function currentGameId(){
-    const qs = new URLSearchParams(location.search);
-    const fromUrl = qs.get('gid');
-    if (fromUrl) return fromUrl;
-    try { const ls = localStorage.getItem('dame_gid'); if (ls) return ls; } catch(e){}
-    return null;
-  }
+  const qs  = new URLSearchParams(location.search);
+  const gid = qs.get('gid') || localStorage.getItem('dame_gid') || '';
 
-  async function markDoneFirestore(gid){
-    if (!gid || !hasFirebaseHelpers) return;
+  const finishedKey = (g)=> `dame_finished_gid_${g}`;
+
+  async function finishClean() {
+    // 1) Marquer la partie terminée + archiver les totaux (best-effort)
     try {
-      const ref = window.firebaseDoc(window.db, 'scores_dame_de_pique', gid);
-      const snap = await window.firebaseGetDoc(ref);
-      const data = snap.exists() ? snap.data() : {};
-      const totals = data && data.totals ? data.totals : {};
-      await window.firebaseUpdateDoc(ref, { status:'done', archivedTotals: totals, finishedAt: window.firebaseServerTimestamp() });
-    } catch(e){ console.warn('[patch] Firestore mark done failed', e); }
-  }
-
-  window.__finishGamePatched = async function(){
-    const gid = currentGameId();
-    try { localStorage.setItem(finishedKey(gid||'unknown'), '1'); } catch(e){}
-    await markDoneFirestore(gid);
-    try { localStorage.removeItem('dame_gid'); } catch(e){}
-    try { localStorage.removeItem('dame_myIndex'); } catch(e){}
-    try { if (window.unsubscribeMain) { window.unsubscribeMain(); } } catch(e){}
-    try { window.location.href = 'selection_jeux.html'; } catch(e){}
-  };
-
-  function bindFinishButton(){
-    const ids = ['btnReturn','btnTerminer','btnFinPartie'];
-    for (const id of ids){
-      const el = document.getElementById(id);
-      if (el && !el.__damePatch){
-        el.__damePatch = true;
-        el.addEventListener('click', function(ev){
-          try { ev.preventDefault(); } catch(e){}
-          window.__finishGamePatched();
-        }, {capture:true});
+      if (gid) {
+        const ref  = doc(db, 'scores_dame_de_pique', gid);
+        const snap = await getDoc(ref);
+        const data = snap.exists() ? snap.data() : {};
+        const totals = (data && data.totals) ? data.totals : {};
+        await updateDoc(ref, {
+          state: 'done',
+          archivedTotals: totals,
+          finishedAt: serverTimestamp()
+        });
       }
-    }
+    } catch (e) { console.warn('[finishClean] update doc failed', e); }
+
+    // 2) Drapeau local + nettoyage
+    try { localStorage.setItem(finishedKey(gid || 'unknown'), '1'); } catch {}
+    try { localStorage.removeItem('dame_gid'); localStorage.removeItem('dame_myIndex'); } catch {}
+
+    // 3) Stopper l’écoute si exposée par ta page
+    try { window.unsubscribeMain?.(); } catch {}
+
+    // 4) Redirection simple (pas de querystring)
+    location.replace('selection_jeux.html');
   }
 
-  document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState === 'visible'){
-      const gid = currentGameId();
+  // Accrocher le bouton existant #btnReturn
+  const btn = document.getElementById('btnReturn');
+  if (btn && !btn.__antiYoyoPatched) {
+    btn.__antiYoyoPatched = true;
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishClean(); }, { capture: true });
+  }
+
+  // Si l’onglet revient visible après avoir fini, re-basculer vers la sélection
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
       try {
         if (gid && localStorage.getItem(finishedKey(gid))) {
           if (location.pathname.endsWith('dame_de_pique.html')) {
             location.replace('selection_jeux.html');
           }
         }
-      } catch(e){}
+      } catch {}
     }
-  }, {passive:true});
+  }, { passive: true });
 
-  try { bindFinishButton(); } catch(e){}
-  setTimeout(bindFinishButton, 800);
-})();
+  // Garde facultatif à appeler depuis ton onSnapshot si désiré
+  window.__antiYoyoGuard = function(data){
+    try {
+      if (data?.state === 'done' && localStorage.getItem(finishedKey(gid))) {
+        window.unsubscribeMain?.();
+        return true;
+      }
+    } catch {}
+    return false;
+  };
 </script>
 
 </body>
