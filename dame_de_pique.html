@@ -470,9 +470,16 @@
         if (players.length) window.__STATE.players = players;
         window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
         // ✅ Dealer provenant de selection_jeux
-        if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
-        else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
-        window.__STATE.dealerIndexFromSoiree = window.__STATE.dealerIndex;
+       // Dans listenSoiree(), juste après: const data = snap.data()||{};
+const fromSoiree =
+  (typeof data.leaderIndex === 'number')      ? data.leaderIndex :
+  (typeof data.dealerIndex === 'number')      ? data.dealerIndex :
+  (typeof data.dealerIndexStart === 'number') ? data.dealerIndexStart :
+  -1;
+
+window.__STATE.dealerIndex = fromSoiree;
+window.__STATE.dealerIndexFromSoiree = fromSoiree;
+
         await seedScoresIfNeeded(window.__STATE.players);
         // Auto-bind par deviceId si possible
         const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
