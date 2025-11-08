@@ -180,7 +180,7 @@
     const state = window.__STATE || {
       players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
       round: 1,
-      dealerIndex: -1,
+      dealerIndex: 0,
       roundScores: {},
       expected(){ return this.players.length; },
       get passInfo(){ return passRuleForRound(this.round); },
@@ -447,31 +447,18 @@
       });
     }
 
-async function seedScoresIfNeeded(players){
-  if (!gameId) return;
-  const ref = doc(db, 'scores_dame_de_pique', gameId);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return;
-
-  // ❗ Le brasseur DOIT venir de selection_jeux — pas de valeur par défaut
-  const desired = window.__STATE.dealerIndexFromSoiree;
-  if (!(typeof desired === 'number' && desired >= 0)) {
-    console.warn('[Seed] dealerIndexFromSoiree absent — attente de selection_jeux');
-    return; // on attend que selection_jeux fixe la valeur
-  }
-
-  const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-  await setDoc(ref, {
-    createdAt: serverTimestamp(),
-    soireeCode: soireeCode || null,
-    round: 1,
-    dealerIndex: desired,         // 👈 brasseur imposé par selection_jeux
-    totals,
-    autoDealerSeeded: true
-  });
-  console.log('[Seed] scores_dame_de_pique créé (dealerIndex from selection_jeux:', desired, ')');
-}
-
+    async function seedScoresIfNeeded(players){
+      if (!gameId) return;
+      const ref = doc(db, 'scores_dame_de_pique', gameId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) return;
+      const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
+      const dealerSeed = (typeof window.__STATE.dealerIndexFromSoiree === 'number' && window.__STATE.dealerIndexFromSoiree >= 0)
+        ? window.__STATE.dealerIndexFromSoiree
+        : (typeof window.__STATE.dealerIndex === 'number' ? window.__STATE.dealerIndex : 0);
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals, autoDealerSeeded: true });
+      console.log('[Seed] scores_dame_de_pique créé (dealerIndex seed:', dealerSeed, ')');
+    }
 
     function listenSoiree(){
       if (!soireeCode) return () => {};
@@ -494,17 +481,6 @@ async function seedScoresIfNeeded(players){
           const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
           if (idx>=0){ try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{} window.__STATE.myIndex = idx; }
         }
-      // ✅ Le brasseur est toujours celui défini dans selection_jeux
-      const desired = window.__STATE.dealerIndexFromSoiree;
-      if (typeof desired === 'number' && desired >= 0 && d.dealerIndex !== desired) {
-       try {
-          await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true });
-            window.__STATE.dealerIndex = desired;
-        } catch(e) { console.warn('Alignement dealer vers selection_jeux échoué:', e); }
-}
-
-      
-        
         window.renderAll?.();
       });
     }
@@ -526,7 +502,7 @@ async function seedScoresIfNeeded(players){
         window.__STATE.lastRound   = d.lastRound || null;
         // ✅ Correction robuste du premier brasseur au tour 1 (une seule fois)
         const desired = window.__STATE.dealerIndexFromSoiree;
-        if (d.round === 1 && typeof desired === 'number' && desired >= 0 && d.autoDealerSeeded !== true) {
+        if (typeof desired === 'number' && desired >= 0 && d.dealerIndex !== desired) {
           try {
             await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true });
             window.__STATE.dealerIndex = desired;
@@ -660,4 +636,3 @@ async function seedScoresIfNeeded(players){
   </script>
 </body>
 </html>
-
