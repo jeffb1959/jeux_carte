@@ -642,54 +642,70 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     });
   </script>
 
-<!-- Patch anti-yo-yo v6.8.2 (2025-11-08) -->
+<!-- Patch anti-yo-yo + cleanup soiree v6.8.3 (2025-11-08) -->
 <script type="module">
   import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
-  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
   const app = getApps()[0];
   const db  = getFirestore(app);
 
-  const qs  = new URLSearchParams(location.search);
-  const gid = qs.get('gid') || localStorage.getItem('dame_gid') || '';
+  const qs     = new URLSearchParams(location.search);
+  const gid    = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
+  const codeId = qs.get('code') || localStorage.getItem('dame_code') || '';
 
   const finishedKey = (g)=> `dame_finished_gid_${g}`;
 
-  async function finishClean() {
-    // 1) Marquer la partie terminée + archiver les totaux (best-effort)
+  async function markScoresDone() {
+    if (!gid) return;
     try {
-      if (gid) {
-        const ref  = doc(db, 'scores_dame_de_pique', gid);
-        const snap = await getDoc(ref);
-        const data = snap.exists() ? snap.data() : {};
-        const totals = (data && data.totals) ? data.totals : {};
-        await updateDoc(ref, {
-          state: 'done',
-          archivedTotals: totals,
-          finishedAt: serverTimestamp()
-        });
-      }
-    } catch (e) { console.warn('[finishClean] update doc failed', e); }
+      const ref  = doc(db, 'scores_dame_de_pique', gid);
+      const snap = await getDoc(ref);
+      const data = snap.exists() ? snap.data() : {};
+      const totals = (data && data.totals) ? data.totals : {};
+      await updateDoc(ref, {
+        state: 'done',
+        archivedTotals: totals,
+        finishedAt: serverTimestamp()
+      });
+    } catch (e) { console.warn('[v6.8.3] scores update failed', e); }
+  }
 
-    // 2) Drapeau local + nettoyage
+  async function cleanupSoiree() {
+    if (!codeId) return;
+    try {
+      const sref = doc(db, 'soirees', codeId);
+      await updateDoc(sref, {
+        status: 'setup',             // prêt pour relancer un autre jeu
+        currentGame: deleteField(),  // supprime la référence à la partie en cours
+        lastEndedGame: { type: 'dame_de_pique', gid, endedAt: serverTimestamp() }
+      });
+    } catch (e) { console.warn('[v6.8.3] soiree cleanup failed', e); }
+  }
+
+  async function finishCleanPlus() {
+    await markScoresDone();    // 1) Marque la partie comme terminée
+    await cleanupSoiree();     // 2) Nettoie la soiree pour empêcher la redirection
+
+    // 3) Pose le drapeau local + nettoie
     try { localStorage.setItem(finishedKey(gid || 'unknown'), '1'); } catch {}
     try { localStorage.removeItem('dame_gid'); localStorage.removeItem('dame_myIndex'); } catch {}
 
-    // 3) Stopper l’écoute si exposée par ta page
+    // 4) Stoppe un éventuel listener
     try { window.unsubscribeMain?.(); } catch {}
 
-    // 4) Redirection simple (pas de querystring)
+    // 5) Redirection sans params
     location.replace('selection_jeux.html');
   }
 
-  // Accrocher le bouton existant #btnReturn
+  // Accrocher le bouton existant #btnReturn (évite double-binding avec un flag distinct)
   const btn = document.getElementById('btnReturn');
-  if (btn && !btn.__antiYoyoPatched) {
-    btn.__antiYoyoPatched = true;
-    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishClean(); }, { capture: true });
+  if (btn && !btn.__finishPatched683) {
+    btn.__finishPatched683 = true;
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
   }
 
-  // Si l’onglet revient visible après avoir fini, re-basculer vers la sélection
+  // Sécurité si l'onglet revient
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       try {
@@ -702,7 +718,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     }
   }, { passive: true });
 
-  // Garde facultatif à appeler depuis ton onSnapshot si désiré
+  // Garde optionnelle pour onSnapshot
   window.__antiYoyoGuard = function(data){
     try {
       if (data?.state === 'done' && localStorage.getItem(finishedKey(gid))) {
