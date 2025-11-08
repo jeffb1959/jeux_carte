@@ -9,7 +9,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.5.5)</title>
+  <title>Dame de Pique — App (v6.7.0)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -34,11 +34,11 @@
     .sheet h3{margin:0 0 8px}
     .inp{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334567;background:#0b1324;color:var(--text);font-size:1rem}
     .row{display:grid;gap:8px}
-    .msg{color:#22c55e;font-size:0.9rem;text-align:center}
-    .danger{color:#ef4444}
+    .msg{color:var(--ok);font-size:0.9rem;text-align:center}
+    .danger{color:var(--danger)}
     .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .passTag{margin-left:auto;background:#14223f;border:1px solid #2b3e69;border-radius:10px;padding:6px 10px;font-size:.9rem}
-    .ok{color:#22c55e}
+    .ok{color:var(--ok)}
     .dealerBadge{background:#14532d !important;border-color:#1a7f3a !important}
     .whoBtn{display:block;width:100%;padding:10px 12px;border-radius:12px;border:1px solid #2b3e69;background:#14223f;color:var(--text);font-weight:700;cursor:pointer}
     .whoBtn:hover{filter:brightness(1.05)}
@@ -348,7 +348,7 @@
         const m = $('modal');
         if (!m || !m.classList.contains('show')) return;
         const sheet = m.querySelector('.sheet');
-        if (e.target === m and sheet and !sheet.contains(e.target)) {
+        if (e.target === m && sheet && !sheet.contains(e.target)) {
           window.__closeScoreModal();
         }
       }, { capture: true });
