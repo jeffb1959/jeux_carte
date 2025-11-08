@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.5.2)</title>
+  <title>Dame de Pique — App (v6.5.4)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -423,9 +423,11 @@
       const snap = await getDoc(ref);
       if (snap.exists()) return;
       const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      const dealerSeed = (typeof window.__STATE.dealerIndex === 'number' && window.__STATE.dealerIndex >= 0) ? window.__STATE.dealerIndex : 0;
-      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals });
-      console.log('[Seed] scores_dame_de_pique créé');
+      const dealerSeed = (typeof window.__STATE.dealerIndexFromSoiree === 'number' && window.__STATE.dealerIndexFromSoiree >= 0)
+        ? window.__STATE.dealerIndexFromSoiree
+        : (typeof window.__STATE.dealerIndex === 'number' ? window.__STATE.dealerIndex : 0);
+      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals, autoDealerSeeded: true });
+      console.log('[Seed] scores_dame_de_pique créé (dealerIndex seed:', dealerSeed, ')');
     }
 
     function listenSoiree(){
@@ -437,18 +439,21 @@
         const players = normalizePlayers(data);
         if (players.length) window.__STATE.players = players;
         window.__STATE.soireeNo = data.soireeNo ?? data.numero ?? null;
+        // ✅ Dealer provenant de selection_jeux
         if (typeof data.dealerIndex === 'number') window.__STATE.dealerIndex = data.dealerIndex;
         else if (typeof data.dealerIndexStart === 'number') window.__STATE.dealerIndex = data.dealerIndexStart;
+        window.__STATE.dealerIndexFromSoiree = window.__STATE.dealerIndex;
         await seedScoresIfNeeded(window.__STATE.players);
-        // Auto-bind par deviceId si possible (même si whoCard est masqué)
+        // Auto-bind par deviceId si possible
         const needBind = !(Number.isFinite(window.__STATE.myIndex) && window.__STATE.myIndex>=0 && window.__STATE.myIndex<window.__STATE.players.length);
         const devId = window.__STATE.deviceId || localStorage.getItem('deviceId');
         if (needBind && devId){
           const idx = window.__STATE.players.findIndex(p=> (p.deviceId && p.deviceId===devId));
-          if (idx>=0){
-            try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{}
-            window.__STATE.myIndex = idx;
-          }
+          if (idx>=0){ try{ localStorage.setItem('dame_myIndex', String(idx)); }catch{} window.__STATE.myIndex = idx; }
+        }
+        window.renderAll?.();
+      });
+    }
         }
         if (window.__STATE.gameOver === true){
           const ctn = document.getElementById('btnReturnContainer');
@@ -479,25 +484,35 @@
     function listenScores(){
       if (!gameId) return () => {};
       const ref = doc(db, 'scores_dame_de_pique', gameId);
-      return onSnapshot(ref, (snap)=>{
+      return onSnapshot(ref, async (snap)=>{
         setSync(navigator.onLine?'ok':'off');
         if (!snap.exists()) return;
         const d = snap.data();
         window.__STATE.round       = d.round || 1;
-        window.__STATE.dealerIndex = typeof d.dealerIndex === 'number' ? d.dealerIndex : window.__STATE.dealerIndex;
+        window.__STATE.dealerIndex = (typeof d.dealerIndex === 'number') ? d.dealerIndex : window.__STATE.dealerIndex;
         window.__STATE.totals      = d.totals || window.__STATE.totals || {};
         window.__STATE.roundScores = d.roundState || {};
         window.__STATE.roundError  = d.roundError || '';
         window.__STATE.gameOver    = !!d.gameOver;
         window.__STATE.standings   = d.standings || [];
         window.__STATE.lastRound   = d.lastRound || null;
+        // ✅ Correction robuste du premier brasseur au tour 1 (une seule fois)
+        const desired = window.__STATE.dealerIndexFromSoiree;
+        if (d.round === 1 && typeof desired === 'number' && desired >= 0 && d.autoDealerSeeded !== true) {
+          try {
+            const r = doc(db, 'scores_dame_de_pique', gameId);
+            await updateDoc(r, { dealerIndex: desired, autoDealerSeeded: true });
+            window.__STATE.dealerIndex = desired;
+          } catch(e) { console.warn('Auto seed dealer échoué:', e); }
+        }
         window.renderAll?.();
       });
+    });
     }
     window.__listenScores = listenScores;
 
     window.__submitScore = async function submitScore(val){
-      // ✅ Version restaurée (règles d'origine) — somme=25, grand chelem, fin à 100
+      // v6.5.3 — garde-fous fin de partie + télémétrie debug
       if (!Number.isFinite(val) || val < 0 || val > 25) throw new Error('Score invalide (0–25)');
       if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
       setSync('wait');
@@ -508,8 +523,11 @@
           if (!snap.exists()) throw new Error('Partie introuvable');
           const d = snap.data() || {};
 
+          // ⛔ Empêcher toute saisie si la partie est déjà terminée
+          if (d.gameOver === true) throw new Error('Partie terminée.');
+
           const TOTAL_PER_ROUND = 25;   // règle fixe d'origine
-          const END_AT = 100;           // fin de partie à 100 par défaut
+          const END_AT = Number.isFinite(d.endAt) ? Number(d.endAt) : 100; // permet override via doc
 
           const round = (typeof d.round === 'number' && d.round > 0) ? d.round : 1;
           const roundState = { ...(d.roundState || {}) };
@@ -549,7 +567,7 @@
             throw new Error(`Somme invalide (${sum} ≠ ${TOTAL_PER_ROUND}).`);
           }
 
-          // 2) Grand chelem (1 joueur à 25, les autres à 0) → redistribution d'origine
+          // 2) Contrôle (Grand chelem) : 25 / 0 / 0 / 0 → redistribution d'origine
           const count25 = values.filter(v => v === TOTAL_PER_ROUND).length;
           const count0  = values.filter(v => v === 0).length;
           let appliedGrandChelem = false;
@@ -561,17 +579,20 @@
             appliedGrandChelem = true;
           }
 
-          // 3) Application aux totaux
+          // 3) Application aux totaux (coercition forte → nombre)
           const ids = window.__STATE.players.map(p => p.id);
           ids.forEach((pid, i) => {
-            totals[pid] = Number(totals[pid] || 0) + Number(perRound[i] || 0);
+            const prev = Number.isFinite(Number(totals[pid])) ? Number(totals[pid]) : 0;
+            totals[pid] = prev + Number(perRound[i] || 0);
           });
 
-          // 4) Fin de partie ?
+          // 4) Fin de partie ? (défensif + télémétrie)
+          const maxScore = Math.max(...ids.map(pid => Number(totals[pid] || 0)));
+          const reached  = maxScore >= END_AT;
           let gameOver = false;
           let standings = [];
           let winnerId = null;
-          if (ids.some(pid => Number(totals[pid] || 0) >= END_AT)) {
+          if (reached) {
             gameOver = true;
             standings = ids
               .map((pid, i) => ({ pid, name: window.__STATE.players[i]?.name || pid, score: Number(totals[pid] || 0) }))
@@ -593,7 +614,8 @@
             gameOver,
             standings,
             winnerId,
-            lastRound: { values, perRound, sum, appliedGrandChelem, controleIndex, round }
+            lastRound: { values, perRound, sum, appliedGrandChelem, controleIndex, round },
+            debugLastCheck: { endAt: END_AT, max: maxScore, reached, at: new Date().toISOString() }
           }, { merge: true });
         });
         setSync('ok');
