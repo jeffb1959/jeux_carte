@@ -1,15 +1,15 @@
-<!-- Dame de Pique — v6.7.0 (Hotfix)
-  - Fix: SyntaxError due to stray/mismatched braces in <script type="module">
-  - Fix: import updateDoc (was used but not imported)
-  - Move: gameOver return-button wiring into renderAll() (non‑module) to avoid duplicate logic in module script
-  - Keep: rules (somme=25, Contrôle/grand chelem redistribution, fin de partie >= endAt), dealer seed from selection_jeux
+<!-- Version: v6.8.3.1 (2025-11-08)
+Modifications:
+- Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
+- Aucun changement à la logique existante de retour à la sélection (hôte).
 -->
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.7.0)</title>
+  <title>Dame de Pique — App (v6.8.3.1)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -728,6 +728,33 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
     } catch {}
     return false;
   };
+</script>
+
+
+<!-- v6.8.3.1 patch (2025-11-08): auto-redirect all clients when soiree.currentGame disappears -->
+<script type="module">
+  import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+  import { getFirestore, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+  const app = getApps()[0];
+  const db  = getFirestore(app);
+
+  const qs     = new URLSearchParams(location.search);
+  const codeId = qs.get('code') || localStorage.getItem('dame_code') || '';
+
+  if (codeId) {
+    const sref = doc(db, 'soirees', codeId);
+    onSnapshot(sref, (snap) => {
+      const data = snap.data && snap.data();
+      // Quand v6.8.3 supprime currentGame -> déclenchement auto pour tous
+      if (data && !data.currentGame) {
+        const target = `selection_jeux.html?code=${codeId}`;
+        if (!location.href.includes('selection_jeux.html')) {
+          location.replace(target);
+        }
+      }
+    });
+  }
 </script>
 
 </body>
