@@ -1,20 +1,16 @@
-<!-- Version: v6.8.4 (2025 11 09)
+<!-- Version: v6.8.5.1 (2025 11 09)
 Modifications:
-- Point de départ v6.8.4 depuis v6.8.3.1 stable.
-- Aucun changement fonctionnel ni structurel.
+- Point de départ v6.8.5 depuis v6.8. stable.
+- ajuster le declanchement du bouton btnRtn.
 -->
-<!-- Version: v6.8.3.1 (2025-11-09)
-Modifications:
-- Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
-- Version stable mais bouton 2 sec non fonctionnel tout les joueur changes et pas yo-yo
--->
+
 
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.5)</title>
+  <title>Dame de Pique — App (v6.8.5.1)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -711,6 +707,8 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
    btn.__finishPatched683 = true;
     btn.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopImmediatePropagation(); }, { capture: true });
 }
+try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
+
 
   // Sécurité si l'onglet revient
   document.addEventListener('visibilitychange', () => {
@@ -764,7 +762,13 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   }
 </script>
 
+
+<script>
+  try {
+    console.debug('[dame] finishHostFlow available:', typeof window.finishHostFlow);
+    console.debug('[dame] finishCleanPlus available:', typeof window.finishCleanPlus);
+  } catch(_) {}
+</script>
+
 </body>
 </html>
-
-
