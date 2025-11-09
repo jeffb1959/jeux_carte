@@ -699,11 +699,11 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   }
 
   // Accrocher le bouton existant #btnReturn (évite double-binding avec un flag distinct)
- // const btn = document.getElementById('btnReturn');
- // if (btn && !btn.__finishPatched683) {
-//    btn.__finishPatched683 = true;
- //   btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
- // }
+  const btn = document.getElementById('btnReturn');
+  if (btn && !btn.__finishPatched683) {
+   btn.__finishPatched683 = true;
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
+  }
 
   // Sécurité si l'onglet revient
   document.addEventListener('visibilitychange', () => {
@@ -759,3 +759,4 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
 
 </body>
 </html>
+
