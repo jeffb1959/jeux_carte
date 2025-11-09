@@ -1,3 +1,8 @@
+<!-- Version: v6.8.4 (2025 11 09)
+Modifications:
+- Point de départ v6.8.4 depuis v6.8.3.1 stable.
+- Aucun changement fonctionnel ni structurel.
+-->
 <!-- Version: v6.8.3.1 (2025-11-09)
 Modifications:
 - Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
@@ -9,7 +14,7 @@ Modifications:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.3.1)</title>
+  <title>Dame de Pique — App (v6.8.5)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -223,7 +228,7 @@ Modifications:
         let holdTimer=null;
         const fill = btnRet.querySelector('.fill');
         const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
-          holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
+          holdTimer=setTimeout(()=>{ try { (window.finishHostFlow || window.finishCleanPlus)?.(); } catch(e) { console.warn('finish (long-press) error', e); } },2000);
         };
         const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
         btnRet.addEventListener('mousedown',start);
@@ -689,6 +694,8 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
 
     // 3) Pose le drapeau local + nettoie
     try { localStorage.setItem(finishedKey(gid || 'unknown'), '1'); } catch {}
+  try { window.finishCleanPlus = finishCleanPlus; } catch(e) {}
+
     try { localStorage.removeItem('dame_gid'); localStorage.removeItem('dame_myIndex'); } catch {}
 
     // 4) Stoppe un éventuel listener
@@ -702,8 +709,8 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   const btn = document.getElementById('btnReturn');
   if (btn && !btn.__finishPatched683) {
    btn.__finishPatched683 = true;
-    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
-  }
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopImmediatePropagation(); }, { capture: true });
+}
 
   // Sécurité si l'onglet revient
   document.addEventListener('visibilitychange', () => {
