@@ -223,7 +223,15 @@ Modifications:
         let holdTimer=null;
         const fill = btnRet.querySelector('.fill');
         const start = (ev)=>{ ev.preventDefault?.(); btnRet.style.opacity='1'; if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width 2s linear'; fill.style.width='100%'; }
-          holdTimer=setTimeout(()=>{ window.location.href='selection_jeux.html'; },2000);
+          holdTimer = setTimeout(() => {
+            try {
+              // Appel de la fonction officielle de fin de partie
+              (window.finishHostFlow || window.finishCleanPlus)?.();
+            } catch(e) {
+               console.warn("Erreur lors de la fin de partie :", e);
+           }
+          }, 2000);
+
         };
         const cancel=()=>{ btnRet.style.opacity='0.85'; clearTimeout(holdTimer); if(fill){ fill.style.transition='none'; fill.style.width='0%'; } };
         btnRet.addEventListener('mousedown',start);
@@ -699,11 +707,11 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   }
 
   // Accrocher le bouton existant #btnReturn (évite double-binding avec un flag distinct)
-  const btn = document.getElementById('btnReturn');
-  if (btn && !btn.__finishPatched683) {
-   btn.__finishPatched683 = true;
-    btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
-  }
+  //const btn = document.getElementById('btnReturn');
+  //if (btn && !btn.__finishPatched683) {
+  // btn.__finishPatched683 = true;
+  //  btn.addEventListener('click', (ev) => { ev.preventDefault(); finishCleanPlus(); }, { capture: true });
+ // }
 
   // Sécurité si l'onglet revient
   document.addEventListener('visibilitychange', () => {
@@ -759,4 +767,5 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
 
 </body>
 </html>
+
 
