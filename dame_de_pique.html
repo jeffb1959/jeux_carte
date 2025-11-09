@@ -397,7 +397,7 @@ Modifications:
     import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
     import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
-    (() => {
+    
     const qs = new URLSearchParams(location.search);
     const soireeCode = qs.get('code') || localStorage.getItem('dame_code') || '';
     const gameId     = qs.get('gid')  || localStorage.getItem('dame_gid')  || '';
@@ -409,7 +409,7 @@ Modifications:
     const app = getApps().length ? getApps()[0] : initializeApp(cfg);
     const auth = getAuth(app);
     const db   = getFirestore(app);
-    })();
+    
 (() => {
   const __qs = new URLSearchParams(location.search);
   const __codeId = __qs.get('code') || localStorage.getItem('dame_code') || '';
@@ -653,7 +653,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
   import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
-  
+  (() => {
   const app = getApps()[0];
   const db  = getFirestore(app);
 
@@ -662,7 +662,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   const codeId = qs.get('code') || localStorage.getItem('dame_code') || '';
   
   const finishedKey = (g)=> `dame_finished_gid_${g}`;
-   
+  })(); 
   async function markScoresDone() {
     if (!gid) return;
     try {
@@ -766,4 +766,3 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
 
 </body>
 </html>
-
