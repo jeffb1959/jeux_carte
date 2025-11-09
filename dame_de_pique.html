@@ -653,7 +653,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
   import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
-  (() => {
+  
   const app = getApps()[0];
   const db  = getFirestore(app);
 
@@ -662,7 +662,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
   const codeId = qs.get('code') || localStorage.getItem('dame_code') || '';
   
   const finishedKey = (g)=> `dame_finished_gid_${g}`;
-  })(); 
+   
   async function markScoresDone() {
     if (!gid) return;
     try {
@@ -766,3 +766,4 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
 
 </body>
 </html>
+
