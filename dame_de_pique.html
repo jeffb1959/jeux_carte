@@ -1,5 +1,5 @@
-<!-- Version: v6.8.8 (2025-11-10) -->
-<!-- Changements: ajout du bouton Fin de Partie fixe visible pour l’hôte uniquement -->
+<!-- Version: v6.8.8 (2025 11 09)
+Modifs: + Bouton hôte "Fin de la Partie (maintenir 2s)" toujours visible en bas. Long-press 2s, clic court neutralisé. Visibilité (myIndex===0). -->
 <!-- Version: v6.8.3.1 (2025-11-09)
 Modifications:
 - Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
@@ -118,7 +118,12 @@ Modifications:
     <div id="bannerControle" class="banner" role="status" aria-live="polite">
       Contrôle par <span id="controleName">—</span> !
       <small>(25 • 0 • 0 • 0)</small>
-    </div><span>Fin de la Partie (maintenir 2s)</span>
+    </div>
+
+    <div id="btnReturnContainer" style="display:none; text-align:center;">
+      <button id="btnReturn" style="background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
+        <div class="fill"></div>
+        <span>Fin de la Partie (maintenir 2s)</span>
       </button>
     </div>
 
@@ -767,70 +772,90 @@ try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
 </script>
 
 
+  <!-- Host-only always-visible finish button -->
+  <div id="hostFinishContainer" style="display:none; text-align:center; margin:14px 0;">
+    <button id="btnHostFinish" style="display:inline-block; background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:10px 14px;font-size:15px;opacity:0.9;transition:opacity .2s; position:relative; overflow:hidden;">
+      <span class="fill" style="position:absolute; left:0; top:0; height:100%; width:0; background:rgba(255,255,255,.18); transition:none; pointer-events:none;"></span>
+      <span>Fin de la Partie (maintenir 2s)</span>
+    </button>
+  </div>
 
-    <div id="btnReturnContainer" style="display:block; text-align:center;">
-      <button id="btnReturn" style="display:block; background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
-        <div class="fill"></div>
-        
-<script>
+  <script>
+  // v6.8.8: host-only finish button wiring (independent from legacy #btnReturn)
   (function(){
-    function applyHostVisibility(){
-      try {
-        const idx = localStorage.getItem('dame_myIndex');
-        const ctn = document.getElementById('btnReturnContainer');
-        if (!ctn) return;
-        // visible uniquement pour l'hôte (index === '0')
-        ctn.style.display = (String(idx) === '0') ? 'block' : 'none';
-      } catch(e){}
+    function isHost(){
+      try{ return String(localStorage.getItem('dame_myIndex')) === '0'; }catch(e){ return false; }
     }
-    // Patch renderAll pour réappliquer la visibilité après chaque rendu
-    try {
-      const orig = window.renderAll;
-      window.renderAll = function(){
-        try { orig && orig.apply(this, arguments); } catch(e) {}
-        applyHostVisibility();
+    function applyHostVisibility(){
+      var ctn = document.getElementById('hostFinishContainer');
+      if(!ctn) return;
+      ctn.style.display = isHost() ? 'block' : 'none';
+    }
+    function wireHostFinish(){
+      var btn = document.getElementById('btnHostFinish');
+      if(!btn || btn.__wiredHostFinish) return;
+      btn.__wiredHostFinish = true;
+
+      // Neutralise le clic court (on impose 2s de maintien)
+      btn.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopImmediatePropagation(); }, { capture:true });
+
+      var holdTimer = null;
+      var fill = btn.querySelector('.fill');
+
+      var start = function(ev){
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (fill){
+          fill.style.transition='none';
+          fill.style.width='0%';
+          void fill.offsetWidth;
+          fill.style.transition='width 2s linear';
+          fill.style.width='100%';
+        }
+        holdTimer = setTimeout(function(){
+          try {
+            var fn = (window.finishHostFlow || window.finishCleanPlus);
+            if (typeof fn === 'function') { fn(); }
+            else { location.href='selection_jeux.html'; }
+          } catch(e){
+            console.error('[hostFinish] error', e);
+            location.href='selection_jeux.html';
+          }
+        }, 2000);
       };
-    } catch(e) {}
-    // 1er passage
+      var cancel = function(){
+        if (holdTimer) clearTimeout(holdTimer);
+        if (fill){
+          fill.style.transition='none';
+          fill.style.width='0%';
+        }
+      };
+
+      btn.addEventListener('mousedown',  start);
+      btn.addEventListener('mouseup',    cancel);
+      btn.addEventListener('mouseleave', cancel);
+      btn.addEventListener('touchstart', start, { passive:false });
+      btn.addEventListener('touchend',   cancel);
+      btn.addEventListener('touchcancel',cancel);
+    }
+
+    try{
+      var orig = window.renderAll;
+      if (typeof orig === 'function'){
+        window.renderAll = function(){
+          try { orig.apply(this, arguments); } catch(e){}
+          applyHostVisibility();
+          wireHostFinish();
+        };
+      }
+    }catch(e){}
+
     if (document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', applyHostVisibility, { once: true });
+      document.addEventListener('DOMContentLoaded', function(){ applyHostVisibility(); wireHostFinish(); }, { once:true });
     } else {
-      applyHostVisibility();
+      applyHostVisibility(); wireHostFinish();
     }
   })();
-</script>
-<!-- ✅ Conteneur du bouton en fin de page (visible pour l'hôte uniquement) -->
-<div id="btnReturnContainer" style="display:block; text-align:center; margin:12px 0;">
-  <button id="btnReturn" style="display:inline-block; background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
-    <span class="fill" style="display:block; transition:none; width:0%;"></span>
-    <span>Fin de la Partie (maintenir 2s)</span>
-  </button>
-</div>
+  </script>
 
-<!-- ✅ Script visibilité hôte -->
-<script>
-(function(){
-  function applyHostVisibility(){
-    try {
-      const idx = localStorage.getItem('dame_myIndex');
-      const ctn = document.getElementById('btnReturnContainer');
-      if (!ctn) return;
-      ctn.style.display = (String(idx) === '0') ? 'block' : 'none';
-    } catch(e){}
-  }
-  try {
-    const orig = window.renderAll;
-    window.renderAll = function(){
-      try { orig && orig.apply(this, arguments); } catch(e) {}
-      applyHostVisibility();
-    };
-  } catch(e) {}
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', applyHostVisibility, { once:true });
-  } else {
-    applyHostVisibility();
-  }
-})();
-</script>
 </body>
 </html>
