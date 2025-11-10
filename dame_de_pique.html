@@ -1,9 +1,5 @@
-<!-- Version: v6.8.7 (2025 11 09)
-Modifications:
-- Bouton Fin de Partie (#btnReturn) disponible en tout temps: déplacement en fin de page (dernier élément).
-- Visibilité réservée à l'hôte (myIndex === 0); appui long (2s) inchangé.
-- Neutralisation du clic court conservée.
--->
+<!-- Version: v6.8.8 (2025-11-10) -->
+<!-- Changements: ajout du bouton Fin de Partie fixe visible pour l’hôte uniquement -->
 <!-- Version: v6.8.3.1 (2025-11-09)
 Modifications:
 - Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
@@ -15,7 +11,7 @@ Modifications:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.7) (v6.8.7.1)</title>
+  <title>Dame de Pique — App (v6.8.8)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -122,8 +118,11 @@ Modifications:
     <div id="bannerControle" class="banner" role="status" aria-live="polite">
       Contrôle par <span id="controleName">—</span> !
       <small>(25 • 0 • 0 • 0)</small>
+    </div><span>Fin de la Partie (maintenir 2s)</span>
+      </button>
     </div>
-<div class="footer">
+
+    <div class="footer">
       <a class="back" href="#">← Retour</a>
     </div>
 
@@ -149,7 +148,7 @@ Modifications:
 
   <!-- Configuration Firebase (inchangé) -->
   <script>
-window.__FIREBASE_CONFIG = {
+    window.__FIREBASE_CONFIG = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
       authDomain: "soireecartev2.firebaseapp.com",
       projectId: "soireecartev2",
@@ -157,7 +156,7 @@ window.__FIREBASE_CONFIG = {
       messagingSenderId: "784781686361",
       appId: "1:784781686361:web:033693cb22fb1a55af2348"
     };
-</script>
+  </script>
 
   <!-- UI (non-module) : état + rendu + modale -->
   <script>
@@ -769,4 +768,69 @@ try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
 
 
 
-    
+    <div id="btnReturnContainer" style="display:block; text-align:center;">
+      <button id="btnReturn" style="display:block; background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
+        <div class="fill"></div>
+        
+<script>
+  (function(){
+    function applyHostVisibility(){
+      try {
+        const idx = localStorage.getItem('dame_myIndex');
+        const ctn = document.getElementById('btnReturnContainer');
+        if (!ctn) return;
+        // visible uniquement pour l'hôte (index === '0')
+        ctn.style.display = (String(idx) === '0') ? 'block' : 'none';
+      } catch(e){}
+    }
+    // Patch renderAll pour réappliquer la visibilité après chaque rendu
+    try {
+      const orig = window.renderAll;
+      window.renderAll = function(){
+        try { orig && orig.apply(this, arguments); } catch(e) {}
+        applyHostVisibility();
+      };
+    } catch(e) {}
+    // 1er passage
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', applyHostVisibility, { once: true });
+    } else {
+      applyHostVisibility();
+    }
+  })();
+</script>
+<!-- ✅ Conteneur du bouton en fin de page (visible pour l'hôte uniquement) -->
+<div id="btnReturnContainer" style="display:block; text-align:center; margin:12px 0;">
+  <button id="btnReturn" style="display:inline-block; background:#14532d;color:#e7f9f0;border:none;border-radius:12px;padding:6px 12px;font-size:14px;opacity:0.85;transition:opacity 0.3s;">
+    <span class="fill" style="display:block; transition:none; width:0%;"></span>
+    <span>Fin de la Partie (maintenir 2s)</span>
+  </button>
+</div>
+
+<!-- ✅ Script visibilité hôte -->
+<script>
+(function(){
+  function applyHostVisibility(){
+    try {
+      const idx = localStorage.getItem('dame_myIndex');
+      const ctn = document.getElementById('btnReturnContainer');
+      if (!ctn) return;
+      ctn.style.display = (String(idx) === '0') ? 'block' : 'none';
+    } catch(e){}
+  }
+  try {
+    const orig = window.renderAll;
+    window.renderAll = function(){
+      try { orig && orig.apply(this, arguments); } catch(e) {}
+      applyHostVisibility();
+    };
+  } catch(e) {}
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', applyHostVisibility, { once:true });
+  } else {
+    applyHostVisibility();
+  }
+})();
+</script>
+</body>
+</html>
