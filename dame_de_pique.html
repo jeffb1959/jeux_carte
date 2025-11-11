@@ -1,5 +1,9 @@
-<!-- Version: v6.8.9-testA (2025-11-10) -->
-<!-- Changement test: UI branchée sur soirees/{code}.leaderIndex (écoute temps réel) + réconciliation post-rendu. Aucune écriture dans scores_* ; écriture leaderIndex uniquement dans soirees si hôte. -->
+<!-- Version: v6.8.9-testB (2025-11-10) -->
+<!-- Changement testB:
+- Fin de ronde: on N'ÉCRIT PLUS dealerIndex dans scores_dame_de_pique/{gid}.
+- Source de vérité: soirees/{code}.leaderIndex uniquement, rotation par transaction rotateDealerInSoiree().
+- Auto-seed dealer côté listener désactivé pour éviter le "rebond".
+-->
 <!-- Version: v6.8.3.1 (2025-11-09)
 Modifications:
 - Ajout d’un listener Firestore sur soirees/{code} pour rediriger tous les joueurs quand currentGame disparaît.
@@ -11,7 +15,7 @@ Modifications:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.9-testA)</title>
+  <title>Dame de Pique — App (v6.8.9-testB)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -182,8 +186,8 @@ Modifications:
     const state = window.__STATE || {
       players: [ { id:'p1', name:'Joueur 1', total:0 }, { id:'p2', name:'Joueur 2', total:0 }, { id:'p3', name:'Joueur 3', total:0 }, { id:'p4', name:'Joueur 4', total:0 } ],
       round: 1,
-      dealerIndex: 0,
-      roundScores: {},
+            /* dealerIndex (retiré en testB) : écrit désormais dans soirees/{code} via rotateDealerInSoiree */
+            roundScores: {},
       expected(){ return this.players.length; },
       get passInfo(){ return passRuleForRound(this.round); },
       myIndex: parseInt(localStorage.getItem('dame_myIndex') || '-1', 10),
@@ -511,7 +515,7 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
         window.__STATE.lastRound   = d.lastRound || null;
         // ✅ Correction robuste du premier brasseur au tour 1 (une seule fois)
         const desired = window.__STATE.dealerIndexFromSoiree;
-        if (typeof desired === 'number' && desired >= 0 && d.dealerIndex !== desired) {
+        if (false && typeof desired === 'number' && desired >= 0 && d.dealerIndex !== desired) {
           try {
             await updateDoc(ref, { dealerIndex: desired, autoDealerSeeded: true });
             window.__STATE.dealerIndex = desired;
@@ -565,6 +569,16 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
           // Tant que tout le monde n'a pas soumis → on sauvegarde l'état courant
           if (submitted < expected) {
             tx.set(ref, { roundState, roundError: '' }, { merge: true });
+
+          // testB: rotation dealer dans soirees/{code} (source de vérité), hôte uniquement
+          try {
+            const codeId = (new URLSearchParams(location.search).get('code')) || localStorage.getItem('dame_code') || '';
+            const myIndex = String(localStorage.getItem('dame_myIndex') ?? '');
+            if (!gameOver && codeId && myIndex === '0' && typeof rotateDealerInSoiree === 'function') {
+              await rotateDealerInSoiree(codeId);
+            }
+          } catch(e) { console.warn('[testB] rotateDealerInSoiree échoué', e); }
+
             return;
           }
 
@@ -856,95 +870,6 @@ try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
     }
   })();
   </script>
-
-
-<!-- Test A: Dealer via 'soirees/{code}.leaderIndex' (listen + reconcile) -->
-<script type="module">
-  import { getApps } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
-  import { getFirestore, doc, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
-
-  (function(){
-    const app = getApps()[0];
-    const db  = getFirestore(app);
-
-    const qs      = new URLSearchParams(location.search);
-    const codeId  = qs.get('code') || localStorage.getItem('dame_code') || '';
-    const myIndex = String(localStorage.getItem('dame_myIndex') ?? '');
-
-    if (!codeId) { console.warn('[testA] codeId manquant'); return; }
-
-    let soireeData = null;
-
-    function updateDealerHighlight(dealerIndex){
-      try {
-        const list = document.querySelectorAll('[data-player-index]');
-        list.forEach(el => {
-          const idx = Number(el.getAttribute('data-player-index'));
-          el.classList.toggle('is-dealer', idx === Number(dealerIndex));
-        });
-      } catch(e){}
-    }
-
-    function inferDealerFromUI(){
-      const cur = document.querySelector('[data-player-index].is-dealer');
-      if (cur) return Number(cur.getAttribute('data-player-index'));
-      const candidates = [...document.querySelectorAll('[data-player-index]')];
-      for (const el of candidates){
-        if ((el.textContent || '').includes('★')) {
-          return Number(el.getAttribute('data-player-index'));
-        }
-      }
-      return null;
-    }
-
-    async function reconcileDealer(){
-      try {
-        const uiDealer = inferDealerFromUI();
-        if (uiDealer == null) return;
-        const leaderIndex = Number(soireeData?.leaderIndex ?? -1);
-        if (leaderIndex !== uiDealer && myIndex === '0'){
-          const ref = doc(db, 'soirees', codeId);
-          await updateDoc(ref, { leaderIndex: uiDealer });
-          console.log('[testA] soirees.leaderIndex <-', uiDealer);
-        }
-        updateDealerHighlight(uiDealer);
-      } catch(e){
-        console.warn('[testA] reconcileDealer erreur', e);
-      }
-    }
-
-    try {
-      const orig = window.renderAll;
-      window.renderAll = function(){
-        const res = orig ? orig.apply(this, arguments) : undefined;
-        setTimeout(reconcileDealer, 0);
-        return res;
-      };
-    } catch(e){}
-
-    try {
-      const ref = doc(db, 'soirees', codeId);
-      onSnapshot(ref, (snap)=>{
-        soireeData = snap.data() || {};
-        const d = Number(soireeData.leaderIndex ?? -1);
-        if (d >= 0) updateDealerHighlight(d);
-      });
-    } catch(e){
-      console.warn('[testA] onSnapshot soirees erreur', e);
-    }
-
-    if (document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', ()=> setTimeout(reconcileDealer, 0), { once:true });
-    } else {
-      setTimeout(reconcileDealer, 0);
-    }
-  })();
-</script>
-
-<style>
-/* Style doux si classe absente ailleurs */
-.is-dealer { background: rgba(255, 234, 186, 0.25) !important; }
-</style>
 
 </body>
 </html>
