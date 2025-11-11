@@ -1,4 +1,8 @@
-<!-- Version: v6.8.9-testB (2025-11-10) -->
+<!-- Version: v6.9.1-testC (2025-11-11) -->
+<!-- TestC:
+1) Déplace la rotation du brasseur après la transaction (tour complet) pour éviter TDZ de 'gameOver'.
+2) Ajoute ensureAllPlayersSeeded(code,gid) côté hôte pour compléter standings/totals si incomplets.
+-->
 <!-- Changement testB:
 - Fin de ronde: on N'ÉCRIT PLUS dealerIndex dans scores_dame_de_pique/{gid}.
 - Source de vérité: soirees/{code}.leaderIndex uniquement, rotation par transaction rotateDealerInSoiree().
@@ -15,7 +19,7 @@ Modifications:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — App (v6.8.9-testB)</title>
+  <title>Dame de Pique — App (v6.9.1-testC)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger:#ef4444; }
     *{box-sizing:border-box}
@@ -530,7 +534,10 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
       // v6.5.5 — garde-fous fin de partie + télémétrie debug (même logique)
       if (!Number.isFinite(val) || val < 0 || val > 25) throw new Error('Score invalide (0–25)');
       if (!gameId) { window.__STATE.pendingScore = val; throw new Error('Partie non initialisée (gid manquant)'); }
-      setSync('wait');
+      let __didEndRound=false, __didGameOver=false;
+const __codeId=(new URLSearchParams(location.search).get('code'))||localStorage.getItem('dame_code')||'';
+const __myIndexStr=String(localStorage.getItem('dame_myIndex')??'');
+setSync('wait');
       const ref = doc(db, 'scores_dame_de_pique', gameId);
       try {
         await runTransaction(db, async (tx) => {
@@ -622,7 +629,8 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
             standings = ids
               .map((pid, i) => ({ pid, name: window.__STATE.players[i]?.name || pid, score: Number(totals[pid] || 0) }))
               .sort((a, b) => a.score - b.score);
-            winnerId = standings[0]?.pid || null; // plus petit score gagne
+            winnerId = standings[0]?.pid || null; __didEndRound=true; __didGameOver=gameOver;
+// plus petit score gagne
           }
 
           const nextRound = round + 1;
@@ -644,7 +652,13 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
           }, { merge: true });
         });
         setSync('ok');
-      } catch (err) {
+      
+try{
+  if(__codeId && __myIndexStr==='0' && __didEndRound && !__didGameOver && typeof rotateDealerInSoiree==='function'){
+    await rotateDealerInSoiree(__codeId);
+  }
+}catch(e){ console.warn('[testC] rotateDealerInSoiree après tx échoué', e); }
+} catch (err) {
         setSync('off');
         throw err;
       }
@@ -870,6 +884,24 @@ try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
     }
   })();
   </script>
+
+
+<script>
+  (function(){
+    function run(){
+      try{
+        const codeId=(new URLSearchParams(location.search).get('code'))||localStorage.getItem('dame_code')||'';
+        const gid=(new URLSearchParams(location.search).get('gid'))||localStorage.getItem('dame_gid')||'';
+        const myIndex=String(localStorage.getItem('dame_myIndex')??'');
+        if(codeId && gid && myIndex==='0' && typeof window.ensureAllPlayersSeeded==='function'){
+          window.ensureAllPlayersSeeded(codeId, gid).catch(console.warn);
+        }
+      }catch(e){}
+    }
+    if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', run, {once:true}); }
+    else { run(); }
+  })();
+</script>
 
 </body>
 </html>
