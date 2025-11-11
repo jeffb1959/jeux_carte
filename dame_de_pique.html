@@ -457,18 +457,26 @@ Modifications:
       });
     }
 
-    async function seedScoresIfNeeded(players){
-      if (!gameId) return;
-      const ref = doc(db, 'scores_dame_de_pique', gameId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) return;
-      const totals = Object.fromEntries(players.map(p=>[p.id, 0]));
-      const dealerSeed = (typeof window.__STATE.dealerIndexFromSoiree === 'number' && window.__STATE.dealerIndexFromSoiree >= 0)
-        ? window.__STATE.dealerIndexFromSoiree
-        : (typeof window.__STATE.dealerIndex === 'number' ? window.__STATE.dealerIndex : 0);
-      await setDoc(ref, { createdAt: serverTimestamp(), soireeCode: soireeCode || null, round: 1, dealerIndex: dealerSeed, totals, autoDealerSeeded: true });
-      console.log('[Seed] scores_dame_de_pique créé (dealerIndex seed:', dealerSeed, ')');
-    }
+  async function seedScoresIfNeeded(players){
+    try{
+      if (!window.gameId) return; // gameId doit être résolu avant
+      const db        = window.db || (typeof getFirestore==='function' ? getFirestore(getApps()[0]) : null);
+      const refScore  = doc(db, 'scores_dame_de_pique', window.gameId);
+      const refSoiree = doc(db, 'soirees', window.soireeCode);
+
+      // Construis les IDs attendus par index
+      const ids = players.map((p,i)=> p?.id || `p${i}`);
+
+      const snap = await getDoc(refScore);
+
+      // === Cas 1 : doc absent -> création complète
+      if (!snap.exists()){
+        const totals    = Object.fromEntries(ids.map(id => [id, 0]));
+        const standings = ids.map((id, i) => ({
+          pid: id,
+          name: players[i]?.name || `Joueur ${i+1}`,
+          score: 0,
+        }));
 
     function listenSoiree(){
       if (!soireeCode) return () => {};
@@ -501,7 +509,69 @@ window.__STATE.dealerIndexFromSoiree = fromSoiree;
         window.renderAll?.();
       });
     }
+        // Dealer initial (si tu as déjà une source côté soiree)
+        let dealerSeed = 0;
+        try {
+          const soSnap = await getDoc(refSoiree);
+          const so     = soSnap.data() || {};
+          if (typeof so.leaderIndex === 'number' && so.leaderIndex >= 0) dealerSeed = so.leaderIndex;
+        } catch {}
 
+        await setDoc(refScore, {
+          code: window.soireeCode || '',
+          state: 'in_progress',
+          startedAt: serverTimestamp(),
+          leaderIndex: dealerSeed,
+          roundState: {},
+          standings,
+          totals,
+          autoDealerSeeded: true,
+        });
+        return;
+      }
+
+      // === Cas 2 : doc présent -> compléter
+      const data = snap.data() || {};
+      const totalsOrig    = data.totals || {};
+      const standingsOrig = Array.isArray(data.standings) ? data.standings : [];
+
+      const totals    = { ...totalsOrig };
+      const standings = [...standingsOrig];
+
+      let changed = false;
+
+      for (let i = 0; i < ids.length; i++){
+        const id   = ids[i];
+        const name = players[i]?.name || `Joueur ${i+1}`;
+
+        // Assurer totals.pX
+        if (!(id in totals)) { totals[id] = 0; changed = true; }
+
+        // Assurer standings[i]
+        if (!standings[i] || standings[i].pid !== id) {
+          standings[i] = { pid: id, name, score: Number(standings[i]?.score) || 0 };
+          changed = true;
+        } else {
+          // Compléter le nom si manquant, force un nombre
+          const fixedScore = Number(standings[i].score) || 0;
+          if (!standings[i].name || standings[i].name !== name || standings[i].score !== fixedScore) {
+            standings[i] = { pid: id, name, score: fixedScore };
+            changed = true;
+          }
+        }
+      }
+
+      if (changed){
+        await updateDoc(refScore, { standings, totals });
+      }
+    }catch(e){
+      console.warn('[seedScoresIfNeeded] échec', e);
+    }
+  }
+
+  // Rends-la accessible si ton code l’appelle ailleurs
+  try { window.seedScoresIfNeeded = seedScoresIfNeeded; } catch {}
+        
     function listenScores(){
       if (!gameId) return () => {};
       const ref = doc(db, 'scores_dame_de_pique', gameId);
@@ -905,3 +975,4 @@ try { window.finishCleanPlus = finishCleanPlus; } catch(_) {}
 
 </body>
 </html>
+
