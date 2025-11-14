@@ -1,10 +1,10 @@
-<!-- Version v7.1.5 — 2025-11-12 — Zone TEST : Lecteur scores *adaptatif* (schémas multiples) -->
+<!-- Version v7.2.2 — 2025-11-12 — Zone TEST : Lecteur scores *adaptatif* (schémas multiples) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.2.0 (zone test)</title>
+  <title>Dame de Pique — v7.2.2 (zone test)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
     *{ box-sizing:border-box } html,body{ height:100% }
@@ -20,16 +20,55 @@
     .hold2s{ position:relative; overflow:hidden } .hold2s .fill{ position:absolute; inset:0; width:0%; background:rgba(0,0,0,.08); pointer-events:none; transition:width 2s linear }
     .footer{ text-align:center; color:var(--muted); font-size:.95rem } @media (min-width:640px){ .wrap{ max-width:520px } }
   
-    /* Modal simple */
-    .modal-backdrop{ position:fixed; inset:0; background:rgba(3,6,15,.6); display:none; align-items:center; justify-content:center; z-index:50 }
-    .modal{ width:min(520px, 92vw); background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:0 16px 40px rgba(0,0,0,.5) }
-    .modal h3{ margin:0 0 8px; font-size:1.2rem }
-    .grid2{ display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:center }
-    .field{ display:flex; align-items:center; gap:8px }
-    .field input[type=number]{ width:90px; padding:8px; border-radius:10px; border:1px solid #35476d; background:#0f1a30; color:var(--text) }
-    .toolbar{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px }
-    .btn-secondary{ background:#334155; color:#e5e7eb }
-    .warn{ color:#fbbf24 }
+    /* Fenêtre modale de saisie de score (v7.2.0) */
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.78);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:50;
+    }
+    .modal{
+      width:min(520px, 92vw);
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 18px 40px rgba(0,0,0,.6);
+    }
+    .modal h3{ margin:0 0 6px; font-size:1.15rem; }
+    .modal .list-line{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:6px 0;
+      font-size:.95rem;
+    }
+    .modal .you{ font-weight:600; }
+    .modal input[type=number]{
+      width:90px;
+      padding:8px;
+      border-radius:10px;
+      border:1px solid #35476d;
+      background:#0f1a30;
+      color:var(--text);
+    }
+    .modal .toolbar{
+      display:flex;
+      gap:8px;
+      justify-content:flex-end;
+      margin-top:12px;
+    }
+    .btn-secondary{
+      background:#334155;
+      color:#e5e7eb;
+    }
+    .modal .msg{
+      margin-top:6px;
+      font-size:.9rem;
+    }
 
   </style>
 </head>
@@ -57,19 +96,29 @@
       <div id="roundStatus" class="muted" aria-live="polite">0/0 soumis</div>
       <div id="roundError" class="muted" aria-live="assertive"></div>
     </section>
-      <!-- Modal de saisie de score (local) -->
-      <div id="modalScoreBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalScoreTitle">
-        <div class="modal">
-          <h3 id="modalScoreTitle">Saisie des scores — Ronde <span id="modalRound">1</span></h3>
-          <div class="muted" id="modalHint">Entrez les points par joueur. Somme attendue : <span id="expectedSum">—</span></div>
-          <div id="scoreForm" class="grid2" style="margin-top:10px"></div>
-          <div class="muted" style="margin-top:8px">Somme actuelle : <strong id="currentSum">0</strong> <span id="sumWarn" class="warn"></span></div>
-          <div class="toolbar">
-            <button id="btnCancelScore" class="btn btn-secondary" type="button">Annuler</button>
-            <button id="btnSaveScore" class="btn" type="button">Enregistrer (local)</button>
-          </div>
+    <!-- Fenêtre modale de saisie de score (même pour tous les joueurs, v7.2.0) -->
+    <div id="modalScoreBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalScoreTitle">
+      <div class="modal">
+        <h3 id="modalScoreTitle">Saisie du pointage — Ronde <span id="modalRound">1</span></h3>
+        <div class="muted" id="modalInfo">
+          Chaque joueur ouvre cette fenêtre depuis le bouton « Inscrire mon pointage ». Aucun écrit Firestore à cette étape.
+        </div>
+
+        <div id="modalPlayers" style="margin-top:8px;"></div>
+
+        <div style="margin-top:10px;">
+          Mon score pour cette ronde :
+          <input id="myScoreInput" type="number" min="0" max="25" step="1" value="0" />
+        </div>
+
+        <div id="modalMsg" class="msg muted"></div>
+
+        <div class="toolbar">
+          <button id="btnCancelScore" class="btn btn-secondary" type="button">Annuler</button>
+          <button id="btnAcceptScore" class="btn" type="button">Accepter (local)</button>
         </div>
       </div>
+    </div>
 
 
     <details class="card" id="diag" style="font-size:.95rem">
@@ -84,7 +133,7 @@
       </button>
     </section>
 
-    <div class="footer">v7.2.0 — zone test (saisie des scores — local, sans écriture)</div>
+    <div class="footer">v7.2.2 — zone test (saisie scores + synchro temps réel)</div>
   </main>
   <script>
     window.firebaseConfig = {
@@ -134,7 +183,7 @@
 
   <!-- === data/scores === (adaptatif) -->
   <script type="module">
-    import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    import { doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
     let unsubscribeScores=null;
 
 function extractTotals(data){
@@ -191,6 +240,15 @@ function extractRound(data){
       unsubscribeScores = onSnapshot(ref, (snap)=>{
         if(!snap.exists()){ onData?.(null); return; }
         const raw = snap.data()||{};
+        const inputs = (raw.inputs && typeof raw.inputs === "object" && !Array.isArray(raw.inputs))
+          ? raw.inputs
+          : {};
+        try{
+          if (window.ModInit && window.ModInit.state) {
+            window.ModInit.state.currentInputs = inputs;
+          }
+        }catch(_){}
+
         const totals = extractTotals(raw);
         const round  = extractRound(raw);
         const extra  = { lastRoundPer: (raw.lastRound && Array.isArray(raw.lastRound.perRound)) ? raw.lastRound.perRound : null };
@@ -199,7 +257,60 @@ function extractRound(data){
       return ()=>{ if(unsubscribeScores) unsubscribeScores(); };
     }
 
-    window.ModScores = { listenScores };
+
+    async function submitScoreForCurrentDevice(score){
+      const mod = window.ModInit || {};
+      const state = mod.state || {};
+      const getDb = mod.getDb;
+      if (!getDb) {
+        console.warn("[submitScore] getDb absent");
+        return;
+      }
+      const db = getDb();
+      if (!db) {
+        console.warn("[submitScore] DB indisponible");
+        return;
+      }
+      if (!state.gameId) {
+        console.warn("[submitScore] gameId manquant");
+        return;
+      }
+      let s = Number(score);
+      if (!Number.isFinite(s)) {
+        console.warn("[submitScore] score invalide");
+        return;
+      }
+
+      // Résoudre deviceId si manquant : URL ?did=... ou localStorage
+      if (!state.deviceId) {
+        try{
+          const qs = new URLSearchParams(location.search);
+          const fromUrl = qs.get("did");
+          if (fromUrl) {
+            state.deviceId = fromUrl;
+          } else if (window.localStorage) {
+            const stored = localStorage.getItem("dame_de_pique_deviceId");
+            if (stored) state.deviceId = stored;
+          }
+        }catch(e){
+          console.warn("[submitScore] impossible de résoudre deviceId:", e);
+        }
+      }
+      if (!state.deviceId) {
+        console.warn("[submitScore] deviceId toujours manquant, abandon.");
+        return;
+      }
+
+      const ref = doc(db, "scores_dame_de_pique", state.gameId);
+      try{
+        await updateDoc(ref, { ["inputs."+state.deviceId]: s });
+      }catch(e){
+        console.error("[submitScore] erreur updateDoc:", e);
+      }
+    }
+
+    window.ModScores = { listenScores, submitScoreForCurrentDevice };
+
   </script>
 
   <!-- === logic/rounds === -->
@@ -271,82 +382,101 @@ function extractRound(data){
     }
     function ensureFinishIsLast(){ const main=document.querySelector('main.wrap'); const finish=document.getElementById('finishSection'); if(main&&finish&&main.lastElementChild!==finish){ main.appendChild(finish); } }
     
-    // ----- Modal saisie de score (local) -----
+    // Fenêtre modale de saisie de score (v7.2.0, sans écriture Firestore)
     function openScoreModal(){
       const { state } = window.ModInit;
       const backdrop = document.getElementById('modalScoreBackdrop');
-      const host = document.getElementById('scoreForm');
-      const modalRound = document.getElementById('modalRound');
-      const expectedSumEl = document.getElementById('expectedSum');
-      const currentSumEl = document.getElementById('currentSum');
-      const sumWarn = document.getElementById('sumWarn');
+      const listEl   = document.getElementById('modalPlayers');
+      const roundEl  = document.getElementById('modalRound');
+      const inputEl  = document.getElementById('myScoreInput');
+      const msgEl    = document.getElementById('modalMsg');
 
-      if(!backdrop || !host) return;
-      host.innerHTML = '';
-      modalRound.textContent = String(state.round || 1);
+      if(!backdrop || !listEl || !roundEl || !inputEl || !msgEl){
+        console.warn('[openScoreModal] éléments manquants dans le DOM.');
+        return;
+      }
 
-      // Somme attendue : si on a une info côté scores (lastRound.sum sur le doc), on la réutilisera à la prochaine version.
-      // Ici, on estime 26 par défaut mais on tolère tout (warning seulement).
-      const expected = (typeof state.expectedRoundSum === 'number' && state.expectedRoundSum >= 0) ? state.expectedRoundSum : 26;
-      expectedSumEl.textContent = String(expected);
+      msgEl.textContent = '';
+      roundEl.textContent = String(state.round || 1);
 
-      (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p, idx)=>{
-        const rowLbl = document.createElement('div'); rowLbl.className='field'; rowLbl.textContent = p?.name || `Joueur ${idx+1}`;
-        const rowInp = document.createElement('div'); rowInp.className='field';
-        const input = document.createElement('input'); input.type='number'; input.min='0'; input.step='1'; input.value='0'; input.dataset.index=String(idx);
-        input.addEventListener('input', updateSum);
-        rowInp.appendChild(input);
-        host.appendChild(rowLbl); host.appendChild(rowInp);
+      const players = state.players || [];
+      const inputs = state.currentInputs || {};
+
+      // Liste des joueurs avec leur score de ronde courant
+      listEl.innerHTML = '';
+      players.forEach((p, idx) => {
+        const line = document.createElement('div');
+        line.className = 'list-line';
+        const left = document.createElement('div');
+        left.textContent = (p && p.name) ? p.name : `Joueur ${idx+1}`;
+        const right = document.createElement('div');
+        const did = p && p.deviceId;
+        const v = (did && Object.prototype.hasOwnProperty.call(inputs, did)) ? inputs[did] : null;
+        right.textContent = (v != null) ? `${v} pts` : '—';
+        line.appendChild(left);
+        line.appendChild(right);
+        listEl.appendChild(line);
       });
 
-      function sumInputs(){
-        let s=0;
-        host.querySelectorAll('input[type=number]').forEach(inp=> s += Number(inp.value)||0);
-        return s;
+      // Pré-remplir mon score si déjà saisi
+      let myVal = "";
+      if (state.deviceId && inputs && Object.prototype.hasOwnProperty.call(inputs, state.deviceId)) {
+        myVal = String(inputs[state.deviceId]);
       }
-      function updateSum(){
-        const s = sumInputs();
-        currentSumEl.textContent = String(s);
-        if (expected > 0 && s !== expected) {
-          sumWarn.textContent = ` (≠ ${expected})`;
-        } else {
-          sumWarn.textContent = '';
-        }
-      }
-      updateSum();
+      inputEl.value = myVal;
+      inputEl.focus();
+      backdrop.style.display = 'flex';
 
-      backdrop.style.display='flex';
-
-      const cancel = ()=>{ backdrop.style.display='none'; };
-      const save = ()=>{
-        // Enregistre localement
-        const roundIdx = state.round || 1;
-        const arr = [];
-        host.querySelectorAll('input[type=number]').forEach(inp=>{
-          const v = Number(inp.value)||0; const i = Number(inp.dataset.index)||0; arr[i]=v;
-        });
-        state.roundScores = state.roundScores || {};
-        state.roundScores[String(roundIdx)] = arr;
-
-        // Met à jour les totaux locaux (additifs) si on veut un feedback visuel immédiat
-        state.totals = state.totals || {};
-        arr.forEach((v,i)=>{
-          const key = (state.players?.[i]?.id != null) ? String(state.players[i].id) : String(i);
-          const cur = Number(state.totals[key]||0);
-          state.totals[key] = cur + v;
-        });
-
-        backdrop.style.display='none';
-        window.ModUI.renderAll();
+      const close = () => {
+        backdrop.style.display = 'none';
+        msgEl.textContent = '';
       };
 
-      document.getElementById('btnCancelScore')?.addEventListener('click', cancel, {once:true});
-      document.getElementById('btnSaveScore')?.addEventListener('click', save, {once:true});
-      backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) cancel(); });
+      const onCancel = () => {
+        close();
+      };
+
+      const onAccept = async () => {
+        const raw = inputEl.value.trim();
+        const val = Number(raw);
+        if (!Number.isFinite(val) || val < 0 || val > 25) {
+          msgEl.textContent = "Le score doit être un nombre entre 0 et 25.";
+          return;
+        }
+        msgEl.textContent = "Enregistrement...";
+        try{
+          if (window.ModScores && window.ModScores.submitScoreForCurrentDevice) {
+            await window.ModScores.submitScoreForCurrentDevice(val);
+            msgEl.textContent = "Score envoyé.";
+          }else{
+            msgEl.textContent = "Module scores indisponible (aucune écriture).";
+          }
+        }catch(e){
+          console.error("[openScoreModal] erreur lors de submitScore:", e);
+          msgEl.textContent = "Erreur lors de l'enregistrement du score.";
+        }
+        setTimeout(close, 600);
+      };
+
+      // ENTER déclenche « Accepter »
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          onAccept();
+        }
+      });
+
+      document.getElementById('btnCancelScore')?.addEventListener('click', onCancel, { once:true });
+      document.getElementById('btnAcceptScore')?.addEventListener('click', onAccept, { once:true });
+
+      // Fermer si clic en dehors de la boîte
+      backdrop.addEventListener('click', function onBackdrop(e){
+        if(e.target === backdrop){
+          backdrop.removeEventListener('click', onBackdrop);
+          close();
+        }
+      });
     }
-
-
-    function onReady(fn){ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } }
+function onReady(fn){ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', fn, {once:true}); } else { fn(); } }
 
     onReady(async ()=>{
       const { state, boot, ensureAuth } = window.ModInit;
