@@ -1,10 +1,10 @@
-<!-- Version v7.4.0 — 2025-11-13 — Zone TEST : écriture des totaux + ronde + grand chelem dans Firestore -->
+<!-- Version v7.4.1 — 2025-11-14 — Zone TEST : fin de partie (gameOver) gérée dans l'UI -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.4.0 (zone test)</title>
+  <title>Dame de Pique — v7.4.1 (zone test)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
     *{ box-sizing:border-box } html,body{ height:100% }
@@ -134,7 +134,7 @@
       </button>
     </section>
 
-    <div class="footer">v7.4.0 — zone test (totaux + ronde + grand chelem dans Firestore)</div>
+    <div class="footer">v7.4.1 — zone test (totaux + ronde + fin de partie gameOver)</div>
   </main>
 
   <!-- Config Firebase -->
@@ -173,6 +173,7 @@
       deviceId: null,
       currentInputs: {},
       scoresRaw: null,
+      winnerId: null,   // suivi du gagnant éventuel
       _db: null
     };
 
@@ -333,6 +334,8 @@
             if (window.ModInit && window.ModInit.state) {
               window.ModInit.state.currentInputs = inputs;
               window.ModInit.state.scoresRaw = raw;
+              window.ModInit.state.gameOver = !!raw.gameOver;
+              window.ModInit.state.winnerId = raw.winnerId || null;
             }
           }catch(_){}
 
@@ -459,6 +462,13 @@
         console.warn('[applyRoundScore] gameId manquant');
         return;
       }
+
+      // 🔒 Si la partie est déjà terminée, on ne touche plus aux scores
+      if (state.scoresRaw && state.scoresRaw.gameOver === true) {
+        console.warn('[applyRoundScore] Partie déjà terminée (gameOver=true). Aucune nouvelle ronde appliquée.');
+        return;
+      }
+
       if (!summary || !summary.isComplete || !summary.isValid25) {
         return; // rien à faire si la ronde n'est pas complète ou invalide
       }
@@ -596,6 +606,61 @@
       const re = document.getElementById('roundError');
       if (re) {
         const { computeRoundSummary, applyRoundScore } = window.ModRounds;
+
+        // 🔚 Cas 1 : partie déjà terminée
+        if (state.gameOver) {
+          if (rs) rs.textContent = "Partie terminée.";
+
+          // Désactiver le bouton "Inscrire mon pointage"
+          const btn = document.getElementById('btnOpenScore');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Partie terminée";
+          }
+
+          // Chercher le gagnant (si winnerId connu)
+          let winnerName = "—";
+          let winnerTotal = null;
+
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+
+          if (state.winnerId) {
+            const idx = ordered.findIndex(p => p && p.deviceId === state.winnerId);
+            if (idx >= 0) {
+              winnerName = ordered[idx].name || `Joueur ${idx+1}`;
+              const key = String(idx);
+              winnerTotal = Number(state.totals?.[key] || 0);
+            }
+          }
+
+          // Si winnerId manquant, on essaie de déterminer le plus petit total
+          if (winnerName === "—") {
+            let minTotal = Infinity;
+            let minIdx = -1;
+            Object.keys(state.totals || {}).forEach(k=>{
+              const v = Number(state.totals[k] || 0);
+              if (v < minTotal) {
+                minTotal = v;
+                minIdx = parseInt(k,10);
+              }
+            });
+            if (minIdx >= 0 && ordered[minIdx]) {
+              winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
+              winnerTotal = minTotal;
+            }
+          }
+
+          if (winnerTotal != null) {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName} avec ${winnerTotal} points.`;
+          } else {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
+          }
+
+          // On ne fait plus de validation de ronde ni d'appel à applyRoundScore
+          return;
+        }
+
+        // 🔁 Cas 2 : partie en cours → logique de validation de ronde
         const summary = computeRoundSummary(state.players, inputs);
 
         if (!summary.isComplete) {
@@ -674,6 +739,13 @@
     // Fenêtre modale de saisie de score (synchro Firestore)
     function openScoreModal(){
       const { state } = window.ModInit;
+
+      // Si la partie est terminée, on ne permet plus la saisie
+      if (state.gameOver) {
+        alert("La partie est terminée. Il n'est plus possible de saisir des points.");
+        return;
+      }
+
       const backdrop = document.getElementById('modalScoreBackdrop');
       const listEl   = document.getElementById('modalPlayers');
       const roundEl  = document.getElementById('modalRound');
@@ -843,7 +915,7 @@
               ...notes,
               `ℹ️ Doc scores sans champs totals/round (inputs=${inputsCount}).`
             ]);
-            renderAll();   // relance la validation 25 / grand chelem
+            renderAll();   // relance la validation 25 / grand chelem / fin de partie
             return;
           }
 
@@ -854,7 +926,7 @@
           renderAll();
           diagnosticsPush([
             ...notes,
-            '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round+`, inputs=${inputsCount}`
+            '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round+`, inputs=${inputsCount}, gameOver=${state.gameOver}`
           ]);
         });
       } else {
