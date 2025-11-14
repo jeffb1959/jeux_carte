@@ -1,10 +1,10 @@
-<!-- Version v7.3.1 — 2025-11-13 — Zone TEST : validation 25 + Grand Chelem (local, synchro temps réel) -->
+<!-- Version v7.4.0 — 2025-11-13 — Zone TEST : écriture des totaux + ronde + grand chelem dans Firestore -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.3.1 (zone test)</title>
+  <title>Dame de Pique — v7.4.0 (zone test)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
     *{ box-sizing:border-box } html,body{ height:100% }
@@ -134,7 +134,7 @@
       </button>
     </section>
 
-    <div class="footer">v7.3.1 — zone test (validation 25 + Grand Chelem local)</div>
+    <div class="footer">v7.4.0 — zone test (totaux + ronde + grand chelem dans Firestore)</div>
   </main>
 
   <!-- Config Firebase -->
@@ -172,6 +172,7 @@
       authUid: null,
       deviceId: null,
       currentInputs: {},
+      scoresRaw: null,
       _db: null
     };
 
@@ -331,6 +332,7 @@
           try{
             if (window.ModInit && window.ModInit.state) {
               window.ModInit.state.currentInputs = inputs;
+              window.ModInit.state.scoresRaw = raw;
             }
           }catch(_){}
 
@@ -384,6 +386,8 @@
 
   <!-- === logic/rounds === -->
   <script type="module">
+    import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
     function computePassRule(round){
       const rules=['À droite','À gauche','Au centre','Garde tes cartes'];
       return rules[(Math.max(1,round)-1)%4];
@@ -436,8 +440,104 @@
       };
     }
 
-    function applyRoundScore(){ console.debug('[applyRoundScore] (placeholder — écriture totaux à venir)'); }
-    function checkGameOver(){ return false; }
+    // Écrit la ronde et les totaux dans Firestore quand la somme vaut 25
+    async function applyRoundScore(summary){
+      const mod = window.ModInit || {};
+      const state = mod.state || {};
+      const getDb = mod.getDb;
+
+      if (!getDb) {
+        console.warn('[applyRoundScore] getDb absent');
+        return;
+      }
+      const db = getDb();
+      if (!db) {
+        console.warn('[applyRoundScore] DB indisponible');
+        return;
+      }
+      if (!state.gameId) {
+        console.warn('[applyRoundScore] gameId manquant');
+        return;
+      }
+      if (!summary || !summary.isComplete || !summary.isValid25) {
+        return; // rien à faire si la ronde n'est pas complète ou invalide
+      }
+
+      const playersOrdered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      const n = playersOrdered.length;
+      if (!n) return;
+
+      // Totaux de base (normalisés "0","1",...)
+      const baseTotals = [];
+      for (let i=0;i<n;i++){
+        const key = String(i);
+        baseTotals[i] = Number(state.totals?.[key] || 0);
+      }
+
+      // Points de la ronde (après éventuel Grand Chelem)
+      let roundVals = summary.perRound.slice();
+      if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
+        roundVals = roundVals.map((v,idx)=> idx===summary.grandChelemIndex ? 0 : 25);
+      }
+
+      const newTotalsArr = baseTotals.map((t,i)=> t + (Number(roundVals[i])||0));
+
+      // Détermination de fin de partie
+      let gameOver = false;
+      let winnerId = null;
+      let maxTotal = -Infinity;
+      newTotalsArr.forEach(v => { if (v>maxTotal) maxTotal = v; });
+      if (Number.isFinite(maxTotal) && maxTotal >= 100) {
+        gameOver = true;
+        let minTotal = Infinity;
+        let winIndex = -1;
+        newTotalsArr.forEach((v,i)=>{
+          if (v < minTotal) {
+            minTotal = v;
+            winIndex = i;
+          }
+        });
+        if (winIndex >= 0 && playersOrdered[winIndex] && playersOrdered[winIndex].deviceId) {
+          winnerId = playersOrdered[winIndex].deviceId;
+        }
+      }
+
+      // Map "p1","p2",... pour compatibilité avec ton schema existant
+      const totalsMap = {};
+      newTotalsArr.forEach((v,i)=>{
+        totalsMap['p'+(i+1)] = v;
+      });
+
+      const roundNumber = state.round || 1;
+
+      const ref = doc(db, 'scores_dame_de_pique', state.gameId);
+      const payload = {
+        lastRound: {
+          appliedGrandChelem: !!summary.isGrandChelem,
+          controleIndex: -1,
+          perRound: roundVals,
+          round: roundNumber,
+          sum: roundVals.reduce((a,b)=> a + (Number(b)||0), 0),
+          values: roundVals
+        },
+        totals: totalsMap,
+        round: roundNumber + 1,
+        gameOver: gameOver,
+        winnerId: gameOver ? (winnerId || null) : null,
+        roundError: "",
+        // on vide les inputs pour forcer une nouvelle saisie à la ronde suivante
+        inputs: {}
+      };
+
+      try{
+        await updateDoc(ref, payload);
+        console.debug('[applyRoundScore] Ronde appliquée et totaux mis à jour.');
+      }catch(e){
+        console.error('[applyRoundScore] erreur updateDoc:', e);
+      }
+    }
+
+    function checkGameOver(){ return false; } // pas utilisé directement ici
 
     window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver };
   </script>
@@ -486,7 +586,7 @@
         line.appendChild(n); line.appendChild(v); host.appendChild(line);
       });
 
-      // Nouveau : statut de la ronde basé sur les inputs Firestore
+      // Statut de la ronde basé sur les inputs Firestore
       const inputs = state.currentInputs || {};
       const submitted = Object.keys(inputs).length;
       const expected = (state.players||[]).length;
@@ -495,7 +595,7 @@
 
       const re = document.getElementById('roundError');
       if (re) {
-        const { computeRoundSummary } = window.ModRounds;
+        const { computeRoundSummary, applyRoundScore } = window.ModRounds;
         const summary = computeRoundSummary(state.players, inputs);
 
         if (!summary.isComplete) {
@@ -506,9 +606,11 @@
           const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
           const winnerPlayer = ordered[summary.grandChelemIndex];
           const nm = winnerPlayer?.name || `Joueur ${summary.grandChelemIndex+1}`;
-          re.textContent = `Grand chelem détecté pour ${nm} (25). Lors du calcul des totaux, il restera à 0 et les autres auront 25.`;
+          re.textContent = `Grand chelem détecté pour ${nm} (25). Les totaux seront ajustés (0 pour ${nm}, 25 pour les autres).`;
+          applyRoundScore(summary);
         } else {
-          re.textContent = `OK : tous les scores sont saisis et la somme est 25. La ronde est prête à être validée.`;
+          re.textContent = `OK : tous les scores sont saisis et la somme est 25. Les totaux sont mis à jour pour la prochaine ronde.`;
+          applyRoundScore(summary);
         }
       }
     }
@@ -741,7 +843,7 @@
               ...notes,
               `ℹ️ Doc scores sans champs totals/round (inputs=${inputsCount}).`
             ]);
-            renderAll();   // ✅ relance la validation 25 / grand chelem
+            renderAll();   // relance la validation 25 / grand chelem
             return;
           }
 
