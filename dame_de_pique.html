@@ -1,10 +1,10 @@
-<!-- Version v7.3.0 — 2025-11-13 — Zone TEST : validation 25 + Grand Chelem (local, sans écriture de totaux) -->
+<!-- Version v7.3.1 — 2025-11-13 — Zone TEST : validation 25 + Grand Chelem (local, synchro temps réel) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.3.0 (zone test)</title>
+  <title>Dame de Pique — v7.3.1 (zone test)</title>
   <style>
     :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
     *{ box-sizing:border-box } html,body{ height:100% }
@@ -49,7 +49,6 @@
       padding:6px 0;
       font-size:.95rem;
     }
-    .modal .you{ font-weight:600; }
     .modal input[type=number]{
       width:90px;
       padding:8px;
@@ -135,10 +134,10 @@
       </button>
     </section>
 
-    <div class="footer">v7.3.0 — zone test (validation 25 + Grand Chelem local)</div>
+    <div class="footer">v7.3.1 — zone test (validation 25 + Grand Chelem local)</div>
   </main>
 
-  <!-- Config Firebase (production MGM / soirées de cartes) -->
+  <!-- Config Firebase -->
   <script>
     window.firebaseConfig = {
       apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
@@ -277,8 +276,6 @@
       // 1) totals direct (objet)
       if (data && typeof data.totals === 'object' && !Array.isArray(data.totals)) {
         const t = data.totals;
-
-        // Cas spécial : clés "p1","p2",... → remapper vers "0","1",...
         const keys = Object.keys(t);
         const looksLikePN = keys.length && keys.every(k => /^p\d+$/i.test(k));
         if (looksLikePN) {
@@ -439,7 +436,6 @@
       };
     }
 
-    // Pour l’instant, encore placeholders (on les remplira quand on écrira les totaux)
     function applyRoundScore(){ console.debug('[applyRoundScore] (placeholder — écriture totaux à venir)'); }
     function checkGameOver(){ return false; }
 
@@ -736,18 +732,27 @@
       if(state.gameId){
         notes.push('👂 Écoute scores_dame_de_pique/'+state.gameId+' …');
         listenScores(db, state.gameId, ({ totals, round, extra, raw })=>{
+          const inputs = window.ModInit.state.currentInputs || {};
+          const inputsCount = Object.keys(inputs).length;
+
+          // Même sans totals/round, on veut rafraîchir l'affichage
           if(!totals && !round){
-            notes.push('⚠️ Doc scores sans champs reconnus (totals/standings/lastRound).');
-            diagnosticsPush(notes);
+            diagnosticsPush([
+              ...notes,
+              `ℹ️ Doc scores sans champs totals/round (inputs=${inputsCount}).`
+            ]);
+            renderAll();   // ✅ relance la validation 25 / grand chelem
             return;
           }
+
           if(totals) state.totals = totals;
           if(Number.isInteger(round)) state.round = round;
           if(extra && Array.isArray(extra.lastRoundPer)) state.lastRoundPer = extra.lastRoundPer;
+
           renderAll();
           diagnosticsPush([
             ...notes,
-            '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round
+            '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round+`, inputs=${inputsCount}`
           ]);
         });
       } else {
