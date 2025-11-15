@@ -1,919 +1,108 @@
-<!-- Version v7.4.2 — 2025-11-14 — Zone TEST : suppression de l’affichage doublé des scores (div #totals) -->
+<!-- Version v7.5.0 — 2025-11-14 — Zone TEST : séparation CSS / JS (même UI, même logique) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.4.2 (zone test)</title>
-  <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --accent-soft:rgba(79,209,197,0.16); --danger:#f56565; --danger-soft:rgba(245,101,101,0.16); --border:#1f2937; --shadow:0 18px 45px rgba(0,0,0,0.55); --radius:18px; --radius-lg:22px; --radius-pill:999px; --header-h:72px; --transition-fast:150ms ease-out; --transition-med:220ms ease; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
-    *{ box-sizing:border-box } html,body{ height:100% }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); }
-    .wrap{ max-width:420px; margin:0 auto; padding:18px; display:grid; gap:16px }
-    .card{ background:color-mix(in srgb, var(--card) 92%, white 8%); border-radius:18px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
-    h1{ margin:0 0 4px; font-size:clamp(22px,5vw,28px) }
-    .subhead{ margin:0; font-size:13px; color:var(--muted) }
-    .pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid rgba(148,163,184,.5); background:rgba(15,23,42,.9); color:var(--muted); }
-    .pill .dot{ width:6px; height:6px; border-radius:999px; background:radial-gradient(circle,#4ade80 0,#22c55e 40%,#166534 100%); box-shadow:0 0 0 3px rgba(34,197,94,.35); }
-    .pill.host{ border-color:#fbbf24; color:#facc15; }
-    .pill.leading{ border-color:#22c55e; color:#bbf7d0; }
-    .pill.late{ border-color:rgba(248,113,113,.9); color:#fecaca; }
-    .pill.tie{ border-color:#38bdf8; color:#e0f2fe; }
-    .pill.delta{ border-color:#f97316; color:#fed7aa; }
-    .pill.neutral{ border-color:rgba(148,163,184,.7); color:#e5e7eb; }
-
-    .players{ display:grid; gap:8px; margin-top:8px }
-    .player-row{ display:grid; grid-template-columns:minmax(0,1.5fr) auto; gap:8px; align-items:center; padding:8px 10px; border-radius:14px; background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(15,23,42,.9)); border:1px solid rgba(30,64,175,.6); }
-    .player-main{ display:flex; flex-direction:column; gap:2px }
-    .player-name{ font-size:14px; font-weight:500 }
-    .player-sub{ font-size:12px; color:var(--muted) }
-    .player-pills{ display:flex; flex-wrap:wrap; gap:4px; margin-top:3px }
-
-    .btn{ appearance:none; border:none; border-radius:999px; padding:7px 16px; font-size:13px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; display:inline-flex; align-items:center; gap:8px; cursor:pointer; background:radial-gradient(circle at top left,#4fd1c5,#0ea5e9); color:#0f172a; box-shadow:0 12px 30px rgba(15,23,42,.85); transition:transform var(--transition-fast),box-shadow var(--transition-fast),filter var(--transition-fast); }
-    .btn:disabled{ opacity:.6; cursor:default; box-shadow:none; filter:grayscale(.1); }
-    .btn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 16px 36px rgba(15,23,42,.9); filter:brightness(1.03); }
-    .btn:active:not(:disabled){ transform:translateY(1px) scale(.98); box-shadow:0 10px 24px rgba(15,23,42,.9); filter:brightness(.97); }
-    .btn-outline{ background:rgba(15,23,42,.96); color:var(--muted); border:1px solid rgba(148,163,184,.6); box-shadow:0 10px 26px rgba(15,23,42,.9); }
-    .btn-outline:hover:not(:disabled){ background:radial-gradient(circle at top left,rgba(30,64,175,.7),rgba(15,23,42,.96)); color:#e5e7eb; }
-    .btn-danger{ background:radial-gradient(circle at top left,#f97316,#dc2626); color:#111827; }
-    .btn-danger:hover:not(:disabled){ box-shadow:0 16px 38px rgba(127,29,29,.95); filter:brightness(1.05); }
-
-    .btn-finish-hold{ position:relative; overflow:hidden; background:radial-gradient(circle at top left,#4ade80,#22c55e); color:#022c22; }
-    .btn-finish-hold .fill{ position:absolute; inset:0; width:0%; background:rgba(15,23,42,.55); pointer-events:none; transition:width 2s linear; }
-    .btn-finish-hold span.label{ position:relative; z-index:1; }
-
-    .section-header{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px }
-    .section-header h2{ margin:0; font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted) }
-
-    .muted{ font-size:12px; color:var(--muted) }
-
-    .status-line{ font-size:12px; margin-top:8px }
-    .status-strong{ font-weight:500 }
-
-    dialog{ border:none; padding:0; border-radius:20px; max-width:420px; width:100%; background:radial-gradient(circle at top,#020617,#020617 55%,#020617 100%); color:var(--text); box-shadow:0 24px 80px rgba(15,23,42,.9); }
-    dialog::backdrop{ background:rgba(15,23,42,.85); backdrop-filter:blur(5px); }
-    .modal{ padding:14px 16px 16px; display:grid; gap:10px }
-    .modal-header{ display:flex; justify-content:space-between; align-items:center; gap:8px }
-    .modal-header h2{ margin:0; font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted) }
-    .modal-body{ display:grid; gap:10px; font-size:13px }
-    .modal-footer{ display:flex; gap:8px; margin-top:4px }
-    .modal-footer .btn{ flex:1; justify-content:center }
-
-    .field-block{ display:grid; gap:4px }
-    .field-row{ display:flex; justify-content:space-between; gap:8px; align-items:center; padding:8px 10px; border-radius:14px; background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(15,23,42,.9)); border:1px solid rgba(30,64,175,.6); }
-    .field-main{ display:flex; flex-direction:column; gap:2px }
-    .field-title{ font-size:13px; font-weight:500 }
-    .field-sub{ font-size:12px; color:var(--muted) }
-    .chips{ display:flex; flex-wrap:wrap; gap:4px; margin-top:2px }
-    .chip{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid rgba(148,163,184,.6); background:rgba(15,23,42,.95); color:var(--muted); }
-    .chip-strong{ border-color:#4fd1c5; color:#a5f3fc; }
-
-    input[type=number]{ width:80px; padding:4px 6px; border-radius:10px; border:1px solid rgba(148,163,184,.6); background:#020617; color:var(--text); font-size:14px; text-align:center; }
-
-    .alert{ margin-top:6px; padding:6px 8px; border-radius:12px; font-size:12px; border:1px solid rgba(148,163,184,.6); background:linear-gradient(135deg,rgba(15,23,42,.98),rgba(15,23,42,.96)); color:#e5e7eb; }
-    .alert-danger{ border-color:var(--danger); background:linear-gradient(135deg,var(--danger-soft),rgba(15,23,42,.97)); color:var(--danger-text); }
-    .alert-success{ border-color:#22c55e; background:linear-gradient(135deg,rgba(21,128,61,.55),rgba(15,23,42,.98)); color:#bbf7d0; }
-
-    .host-hint{ margin-top:6px; font-size:11px; color:var(--muted); }
-
-    @media (max-width:480px){
-      .wrap{ padding:14px 10px }
-      .card{ padding:14px }
-    }
-  </style>
+  <title>Dame de Pique — v7.5.0 (zone test)</title>
+  <link rel="stylesheet" href="dame_de_pique.css">
 </head>
 <body>
-  <div class="wrap">
-    <header class="card">
-      <div class="section-header" style="margin-bottom:4px">
-        <div>
-          <h1>Dame de Pique</h1>
-          <p class="subhead">Suivi des scores en temps réel</p>
-        </div>
-        <div>
-          <div class="pill">
-            <span class="dot"></span>
-            <span id="gameStateLabel">Chargement...</span>
-          </div>
-        </div>
+  <main class="wrap">
+    <header class="card" aria-labelledby="title">
+      <h1 id="title">Dame de Pique</h1>
+      <h2 id="passRule" class="subhead">Règle : —</h2>
+      <div class="muted" id="meta" style="margin-top:4px">
+        Code soirée: <strong id="code">—</strong> • Tour <span id="round">1</span> • Brasseur: <strong id="dealerName">—</strong>
       </div>
-      <p class="subhead">
-        Ronde <span id="roundLabel">—</span> • Brasseur : <span id="dealerName">—</span>
-      </p>
-      <p class="subhead">Version v7.4.2 — Zone test</p>
     </header>
 
     <section class="card" aria-labelledby="playersTitle">
-      <div class="section-header">
-        <h2 id="playersTitle">Joueurs</h2>
-        <span class="pill neutral" id="passRule">Règle : —</span>
-      </div>
-      <div id="playersList" class="players"></div>
+      <h2 id="playersTitle" class="subhead">Joueurs et totaux</h2>
+      <div id="playersList"></div>
+      <div id="grandChelemBanner" class="badge" style="display:none">Grand chelem détecté sur la dernière ronde</div>
     </section>
 
     <section class="card" aria-labelledby="scoresTitle">
-      <div class="section-header">
-        <h2 id="scoresTitle">Scores</h2>
-      </div>
-      <button id="btnOpenScore" class="btn" type="button" aria-haspopup="dialog" aria-controls="modalScore">
-        Inscrire mon pointage
-      </button>
-      <p class="status-line">
-        <span class="status-strong" id="roundStatus">0/0 soumis</span>
+      <h2 id="scoresTitle" class="subhead">Scores de la ronde en cours</h2>
+      <p class="muted">
+        Ronde <span id="round2">1</span> • Somme des scores attendue : <strong>25 points</strong>.
       </p>
-      <p class="status-line" id="roundError"></p>
+      <div id="roundStatus" class="line">
+        <span>Scores soumis :</span>
+        <strong id="roundStatusValue">0/0</strong>
+      </div>
+      <div id="roundError" class="line" style="display:none"></div>
+      <button id="btnOpenScore" class="btn" type="button">Inscrire mon pointage</button>
     </section>
 
     <section class="card" aria-labelledby="controlsTitle">
-      <div class="section-header">
-        <h2 id="controlsTitle">Contrôles de la partie</h2>
-        <span class="pill host" id="hostBadge" style="display:none">Vous êtes l’hôte</span>
-      </div>
-      <p class="muted">
-        Seul l’hôte peut terminer la partie. Les joueurs peuvent inscrire leurs propres scores à chaque ronde.
-      </p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-        <button id="btnFinish" class="btn btn-finish-hold" type="button" style="display:none">
+      <h2 id="controlsTitle" class="subhead">Contrôles de la partie</h2>
+      <p class="muted" id="leaderInfo">Vous n’êtes pas l’hôte de la partie.</p>
+      <div class="line">
+        <button id="btnFinish" class="btn btn-pale-danger hold2s" type="button" style="display:none">
           <span class="fill"></span>
-          <span class="label">Fin de la partie (maintenir 2s)</span>
+          <span class="label">Fin de la partie (maintenir 2 secondes)</span>
         </button>
-        <button id="btnReload" class="btn btn-outline" type="button">
-          Rafraîchir l’écran
-        </button>
+        <button id="btnReload" class="btn" type="button">Rafraîchir l’écran</button>
       </div>
-      <p class="host-hint">
-        Astuce : si quelque chose semble ne pas se mettre à jour, cliquez sur « Rafraîchir l’écran ». Les données seront relues depuis le nuage.
-      </p>
     </section>
-  </div>
 
-  <dialog id="modalScore" aria-labelledby="modalScoreTitle">
-    <form method="dialog" class="modal" id="scoreForm">
-      <div class="modal-header">
-        <h2 id="modalScoreTitle">Inscrire mon pointage</h2>
-        <button type="button" id="btnCloseModal" class="btn btn-outline" style="padding:4px 10px;font-size:11px">
-          Fermer
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="field-block">
-          <div class="field-row">
-            <div class="field-main">
-              <div class="field-title">Votre nom</div>
-              <div class="field-sub"><span id="modalPlayerName">—</span></div>
-              <div class="chips">
-                <span class="chip chip-strong">Vous seul pouvez saisir votre score</span>
-              </div>
-            </div>
-          </div>
-        </div>
+    <section class="card" aria-labelledby="diagTitle">
+      <h2 id="diagTitle" class="subhead">Diagnostics (debug)</h2>
+      <pre id="diagOutput" style="white-space:pre-wrap;font-size:.8rem;max-height:200px;overflow:auto"></pre>
+    </section>
 
-        <div class="field-block">
-          <label class="field-title" for="scoreInput">Votre score pour la ronde</label>
-          <div class="field-row">
-            <div class="field-main">
-              <div class="field-title">Points de la ronde</div>
-              <div class="field-sub">
-                La somme des points de tous les joueurs doit être <strong>exactement 25</strong>.
-              </div>
-            </div>
-            <input id="scoreInput" name="score" type="number" inputmode="numeric" min="0" max="25" step="1" />
-          </div>
-        </div>
+    <div class="footer">v7.5.0 — zone test (totaux + ronde + fin de partie gameOver)</div>
+  </main>
 
-        <div class="alert" id="modalInfo">
-          Si un joueur réussit un <strong>grand chelem</strong> (25 points), son total sera ajusté automatiquement (0 pour lui, 25 pour les autres).
-        </div>
-
-        <div class="alert alert-danger" id="modalError" style="display:none"></div>
-        <div class="alert alert-success" id="modalSuccess" style="display:none"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="submit" id="btnSubmitScore" class="btn">
-          Soumettre
-        </button>
-      </div>
+  <!-- Fenêtre modale score -->
+  <dialog id="scoreDialog">
+    <form method="dialog" id="scoreForm" class="modal">
+      <header class="modal-header">
+        <h2 class="modal-title">Inscrire mon pointage</h2>
+      </header>
+      <section class="modal-body">
+        <p class="muted">
+          Joueur : <strong id="currentPlayerName">—</strong><br>
+          Ronde : <strong id="currentRoundLabel">1</strong>
+        </p>
+        <label class="modal-label" for="scoreInput">
+          Votre score (0 à 25) — la somme de tous les joueurs doit être 25
+        </label>
+        <input id="scoreInput" name="score" type="number" min="0" max="25" step="1" inputmode="numeric" />
+        <p id="modalError" class="modal-error" style="display:none"></p>
+        <p id="modalInfo" class="modal-info">
+          Si un joueur fait un <strong>grand chelem (25)</strong>, le système ajustera automatiquement les totaux
+          (0 pour lui, 25 pour les autres).
+        </p>
+      </section>
+      <footer class="modal-footer">
+        <button type="submit" class="btn">Enregistrer le score</button>
+        <button type="button" id="btnCancelModal" class="btn">Annuler</button>
+      </footer>
     </form>
   </dialog>
 
-  <script>
-    const $ = (id)=> document.getElementById(id);
+  <!-- Config Firebase -->
+  <script src="dame_de_pique_config.js"></script>
 
-    function debugLog(...args){
-      if (window && window.location && window.location.search.includes('debug=1')) {
-        console.log('[DameDePique]', ...args);
-      }
-    }
+  <!-- === init/app === -->
+  <script type="module" src="dame_de_pique_init.js"></script>
 
-    const firestore = window.firebase && window.firebase.firestore
-      ? window.firebase.firestore()
-      : (window.db || null);
+  <!-- === data/soiree === -->
+  <script type="module" src="dame_de_pique_soiree.js"></script>
 
-    (function initStateModule(){
-      const ModInit = {
-        gid: null,
-        isHost: false,
-        deviceId: null,
-        state: {
-          players: [],
-          totals: {},
-          currentInputs: {},
-          round: 1,
-          gameOver: false,
-          winnerId: null
-        },
-        unsub: null
-      };
-      window.ModInit = ModInit;
-    })();
+  <!-- === data/scores === (adaptatif) -->
+  <script type="module" src="dame_de_pique_scores.js"></script>
 
-    (function initRoundsModule(){
-      const ModRounds = {};
+  <!-- === logic/rounds === -->
+  <script type="module" src="dame_de_pique_rounds.js"></script>
 
-      ModRounds.computePassRule = function computePassRule(round){
-        if (!Number.isFinite(round) || round <= 0) return "—";
-        const r = ((round - 1) % 4) + 1;
-        switch(r){
-          case 1: return "2 cartes à gauche";
-          case 2: return "2 cartes à droite";
-          case 3: return "2 cartes au joueur en face";
-          case 4: return "Aucune carte (pas de passe)";
-          default: return "—";
-        }
-      };
+  <!-- === ui/render === -->
+  <script type="module" src="dame_de_pique_render.js"></script>
 
-      ModRounds.computeDealer = function computeDealer(players, round){
-        if (!Array.isArray(players) || !players.length || !Number.isFinite(round)) return { dealerIndex:-1, dealerName:"—" };
-        const ordered = players.slice().sort((a,b)=>(a?.order ?? 0) - (b?.order ?? 0));
-        const idx = (round - 1) % ordered.length;
-        const p = ordered[idx];
-        return { dealerIndex: idx, dealerName: p?.name || `Joueur ${idx+1}` };
-      };
-
-      ModRounds.computeRoundSummary = function computeRoundSummary(players, inputs){
-        const res = {
-          isComplete:false,
-          isValid25:false,
-          isGrandChelem:false,
-          sum:0,
-          perRound:[],
-          grandChelemIndex:-1
-        };
-
-        if (!Array.isArray(players) || !players.length) return res;
-        const ordered = players.slice().sort((a,b)=>(a?.order ?? 0) - (b?.order ?? 0));
-
-        let sum = 0;
-        let nbComplete = 0;
-        const perRound = [];
-        let grandChelemIndex = -1;
-
-        ordered.forEach((p,idx)=>{
-          const key = (p.id != null) ? String(p.id) : String(idx);
-          const raw = inputs && Object.prototype.hasOwnProperty.call(inputs, key)
-            ? inputs[key]
-            : null;
-          if (raw == null || raw === "") {
-            perRound.push(null);
-            return;
-          }
-          const v = Number(raw);
-          if (!Number.isFinite(v) || v < 0) {
-            perRound.push(null);
-            return;
-          }
-          perRound.push(v);
-          sum += v;
-          nbComplete += 1;
-        });
-
-        res.sum = sum;
-        res.perRound = perRound;
-        res.isComplete = (nbComplete === ordered.length);
-        res.isValid25 = (res.isComplete && sum === 25);
-
-        if (res.isValid25) {
-          const idx = perRound.findIndex(v => v === 25);
-          if (idx >= 0) {
-            res.isGrandChelem = true;
-            res.grandChelemIndex = idx;
-          }
-        }
-
-        return res;
-      };
-
-      ModRounds.applyRoundScore = async function applyRoundScore(summary){
-        const { ModInit } = window;
-        const { state, gid } = ModInit;
-        if (!gid || !window.db) {
-          debugLog("applyRoundScore: gid ou db manquant");
-          return;
-        }
-        const db = window.db;
-        const ref = db.collection('scores_dame_de_pique').doc(gid);
-
-        const players = (state.players || []).slice().sort((a,b)=>(a?.order ?? 0)-(b?.order ?? 0));
-        let roundVals = summary.perRound.slice();
-        if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
-          roundVals = roundVals.map((v,idx)=> idx === summary.grandChelemIndex ? 0 : 25);
-        }
-
-        const prevTotals = state.totals || {};
-        const newTotals = { ...prevTotals };
-        players.forEach((p,idx)=>{
-          const key = (p.id != null) ? String(p.id) : String(idx);
-          const prev = Number.isFinite(prevTotals[key]) ? prevTotals[key] : 0;
-          const add = Number.isFinite(roundVals[idx]) ? roundVals[idx] : 0;
-          newTotals[key] = prev + add;
-        });
-
-        const roundNumber = Number.isFinite(state.round) ? state.round : 1;
-
-        const payload = {
-          lastRound: {
-            appliedGrandChelem: !!summary.isGrandChelem,
-            controleIndex: summary.grandChelemIndex ?? -1,
-            perRound: summary.perRound,
-            round: roundNumber,
-            sum: roundVals.reduce((a,b)=> a + (Number(b)||0), 0),
-            values: roundVals
-          },
-          totals: newTotals,
-          round: roundNumber + 1,
-          roundError: "",
-          gameOver: false
-        };
-
-        try {
-          await ref.set(payload, { merge:true });
-          debugLog("applyRoundScore: round appliqué", payload);
-        } catch (err) {
-          console.error("Erreur applyRoundScore", err);
-        }
-      };
-
-      window.ModRounds = ModRounds;
-    })();
-
-    (function initRenderModule(){
-      const ModRender = {};
-
-      function renderHeader(){
-        const { state } = window.ModInit;
-        const lbl = $('gameStateLabel');
-        const roundLabel = $('roundLabel');
-        const dealerNameEl = $('dealerName');
-        if (!lbl || !roundLabel || !dealerNameEl) return;
-
-        if (state.gameOver) {
-          lbl.textContent = "Partie terminée";
-        } else if (state.round && Number.isFinite(state.round)) {
-          lbl.textContent = "En cours";
-        } else {
-          lbl.textContent = "Préparation…";
-        }
-
-        const round = Number.isFinite(state.round) ? state.round : 1;
-        roundLabel.textContent = String(round);
-
-        const { computeDealer, computePassRule } = window.ModRounds;
-        const { dealerIndex, dealerName } = computeDealer(state.players, round);
-        dealerNameEl.textContent = dealerName || "—";
-
-        const pass = computePassRule(round);
-        const info = document.getElementById('controlsInfo');
-        const passEl=document.getElementById('passRule'); if(passEl) passEl.textContent=`Règle : ${pass}`;
-      }
-
-      function renderPlayers(){
-        const { state } = window.ModInit;
-        const { computePassRule } = window.ModRounds;
-        const host = $('playersList'); if (!host) return;
-        host.innerHTML = '';
-
-        const round = Number.isFinite(state.round) ? state.round : 1;
-        const pass = computePassRule(round);
-
-        const ordered = (state.players || [])
-          .slice()
-          .sort((a,b)=>(a?.order ?? 0) - (b?.order ?? 0));
-
-        const totals = state.totals || {};
-        let minTotal = Infinity;
-        let maxTotal = -Infinity;
-
-        const numericTotals = ordered.map((p, idx)=>{
-          const key = (p.id != null) ? String(p.id) : String(idx);
-          const v = Number.isFinite(totals[key]) ? totals[key] : 0;
-          if (v < minTotal) minTotal = v;
-          if (v > maxTotal) maxTotal = v;
-          return { idx, total:v, key };
-        });
-
-        const diff = maxTotal - minTotal;
-
-        ordered.forEach((p, idx)=>{
-          const row = document.createElement('div');
-          row.className = 'player-row';
-
-          const main = document.createElement('div');
-          main.className = 'player-main';
-
-          const title = document.createElement('div');
-          title.className = 'player-name';
-          title.textContent = p?.name || `Joueur ${idx+1}`;
-
-          const sub = document.createElement('div');
-          sub.className = 'player-sub';
-          const key = (p.id != null) ? String(p.id) : String(idx);
-          const total = Number.isFinite(totals[key]) ? totals[key] : 0;
-          sub.textContent = `Total actuel : ${total} point${Math.abs(total) > 1 ? 's' : ''}`;
-
-          main.appendChild(title);
-          main.appendChild(sub);
-
-          const badgeRow = document.createElement('div');
-          badgeRow.className = 'player-pills';
-
-          if (p && p.isHost) {
-            const hostBadge = document.createElement('span');
-            hostBadge.className = 'pill host';
-            hostBadge.textContent = 'Hôte de la partie';
-            badgeRow.appendChild(hostBadge);
-          }
-
-          if (Number.isFinite(total)) {
-            if (diff <= 0) {
-              const tie = document.createElement('span');
-              tie.className = 'pill tie';
-              tie.textContent = 'Scores à égalité';
-              badgeRow.appendChild(tie);
-            } else {
-              if (total === minTotal) {
-                const lead = document.createElement('span');
-                lead.className = 'pill leading';
-                lead.textContent = 'En tête';
-                badgeRow.appendChild(lead);
-              } else if (total === maxTotal) {
-                const late = document.createElement('span');
-                late.className = 'pill late';
-                late.textContent = 'En retard';
-                badgeRow.appendChild(late);
-              } else {
-                const avg = document.createElement('span');
-                avg.className = 'pill neutral';
-                avg.textContent = 'Score intermédiaire';
-                badgeRow.appendChild(avg);
-              }
-
-              const delta = total - minTotal;
-              if (delta > 0) {
-                const diffPill = document.createElement('span');
-                diffPill.className = 'pill delta';
-                diffPill.textContent = `+${delta} point${delta>1?'s':''} derrière`;
-                badgeRow.appendChild(diffPill);
-              }
-            }
-          }
-
-          if (badgeRow.childElementCount > 0) {
-            main.appendChild(badgeRow);
-          }
-
-          row.appendChild(main);
-
-          const right = document.createElement('div');
-          right.style.textAlign = 'right';
-          right.style.fontWeight = '600';
-          right.textContent = `${Number.isFinite(totals[key]) ? totals[key] : 0}`;
-
-          row.appendChild(right);
-          host.appendChild(row);
-        });
-      }
-
-      function renderTotals(){
-        const { state } = window.ModInit;
-        const host=document.getElementById('totals');
-        // Si le conteneur existe encore dans le DOM, on le vide, mais on ne dessine plus la liste des joueurs ici
-        // pour éviter le doublon avec la carte « Joueurs ».
-        if (host) {
-          host.innerHTML='';
-        }
-
-        // Statut de la ronde basé sur les inputs Firestore
-        const inputs = state.currentInputs || {};
-        const submitted = Object.keys(inputs).length;
-        const expected = (state.players||[]).length;
-        const rs = document.getElementById('roundStatus');
-        if (rs) rs.textContent = `${submitted}/${expected} soumis`;
-
-        const re = document.getElementById('roundError');
-        if (re) {
-          const { computeRoundSummary, applyRoundScore } = window.ModRounds;
-
-          // 🔚 Cas 1 : partie déjà terminée
-          if (state.gameOver) {
-            if (rs) rs.textContent = "Partie terminée.";
-
-            // Désactiver le bouton "Inscrire mon pointage"
-            const btn = document.getElementById('btnOpenScore');
-            if (btn) {
-              btn.disabled = true;
-              btn.textContent = "Partie terminée";
-            }
-
-            // Chercher le gagnant (si winnerId connu)
-            let winnerName = "—";
-            let winnerTotal = null;
-
-            const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-
-            if (state.winnerId) {
-              const idx = ordered.findIndex(p => p && p.deviceId === state.winnerId);
-              if (idx >= 0) {
-                winnerName = ordered[idx].name || `Joueur ${idx+1}`;
-                const key = String(idx);
-                winnerTotal = Number(state.totals?.[key] || 0);
-              }
-            }
-
-            if (winnerName === "—") {
-              let minTotal = Infinity;
-              let minIdx = -1;
-              Object.keys(state.totals || {}).forEach(k=>{
-                const v = Number(state.totals[k] || 0);
-                if (v < minTotal) {
-                  minTotal = v;
-                  minIdx = Number(k);
-                }
-              });
-              if (minIdx >= 0 && ordered[minIdx]) {
-                winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
-                winnerTotal = minTotal;
-              }
-            }
-
-            if (winnerTotal != null) {
-              re.textContent = `Partie terminée. Gagnant : ${winnerName} avec ${winnerTotal} points.`;
-            } else {
-              re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
-            }
-
-            return;
-          }
-
-          // 🔁 Cas 2 : partie en cours → logique de validation de ronde
-          const summary = computeRoundSummary(state.players, inputs);
-
-          if (!summary.isComplete) {
-            re.textContent = "";
-          } else if (!summary.isValid25) {
-            re.textContent = `Erreur: la somme des scores est ${summary.sum}, elle doit être exactement 25.`;
-          } else if (summary.isGrandChelem) {
-            const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-            const winnerPlayer = ordered[summary.grandChelemIndex];
-            const nm = winnerPlayer?.name || `Joueur ${summary.grandChelemIndex+1}`;
-            re.textContent = `Grand chelem détecté pour ${nm} (25)... Les totaux seront ajustés (0 pour ${nm}, 25 pour les autres).`;
-            applyRoundScore(summary);
-          } else {
-            re.textContent = `OK : tous les scores sont saisis et la somme est 25. Les totaux sont mis à jour pour la prochaine ronde.`;
-            applyRoundScore(summary);
-          }
-        }
-      }
-
-      ModRender.renderAll = function renderAll(){
-        renderHeader();
-        renderPlayers();
-        renderTotals();
-      };
-
-      window.ModRender = ModRender;
-    })();
-
-    (function initWiring(){
-      function openScoreModal(){
-        const { state, deviceId } = window.ModInit;
-        const dlg = $('modalScore');
-        const input = $('scoreInput');
-        const nameEl = $('modalPlayerName');
-        const errorEl = $('modalError');
-        const successEl = $('modalSuccess');
-        const infoEl = $('modalInfo');
-
-        if (!dlg || !input || !nameEl || !errorEl || !successEl || !infoEl) return;
-        errorEl.style.display = 'none';
-        successEl.style.display = 'none';
-        infoEl.style.display = '';
-
-        const player = (state.players || []).find(p => p && p.deviceId === deviceId);
-        nameEl.textContent = player?.name || "Vous";
-
-        input.value = '';
-
-        if (typeof dlg.showModal === 'function') {
-          dlg.showModal();
-        } else {
-          dlg.setAttribute('open','true');
-        }
-      }
-
-      function closeScoreModal(){
-        const dlg = $('modalScore');
-        if (!dlg) return;
-        if (typeof dlg.close === 'function') {
-          dlg.close();
-        } else {
-          dlg.removeAttribute('open');
-        }
-      }
-
-      function wireModal(){
-        const btnOpen = $('btnOpenScore');
-        const btnClose = $('btnCloseModal');
-        const form = $('scoreForm');
-        const input = $('scoreInput');
-        const errorEl = $('modalError');
-        const successEl = $('modalSuccess');
-        const infoEl = $('modalInfo');
-
-        if (btnOpen && !btnOpen.__wired){
-          btnOpen.__wired = true;
-          btnOpen.addEventListener('click', (e)=>{
-            e.preventDefault();
-            openScoreModal();
-          }, { capture:true });
-        }
-
-        if (btnClose && !btnClose.__wired){
-          btnClose.__wired = true;
-          btnClose.addEventListener('click',(e)=>{
-            e.preventDefault();
-            closeScoreModal();
-          }, { capture:true });
-        }
-
-        if (form && !form.__wired){
-          form.__wired = true;
-          form.addEventListener('submit', async (e)=>{
-            e.preventDefault();
-            if (!input || !errorEl || !successEl || !infoEl) return;
-
-            const raw = input.value.trim();
-            const v = Number(raw);
-            if (!Number.isFinite(v) || v < 0 || v > 25) {
-              errorEl.style.display = '';
-              errorEl.textContent = "Score invalide. Entrez un nombre entre 0 et 25.";
-              successEl.style.display = 'none';
-              return;
-            }
-
-            errorEl.style.display = 'none';
-            successEl.style.display = 'none';
-            infoEl.style.display = '';
-
-            try {
-              const { ModInit, ModRounds } = window;
-              const { state, deviceId, gid } = ModInit;
-              if (!window.db || !gid) throw new Error("Base de données non initialisée");
-
-              const players = (state.players || []).slice().sort((a,b)=>(a?.order ?? 0)-(b?.order ?? 0));
-              const playerIndex = players.findIndex(p => p && p.deviceId === deviceId);
-              if (playerIndex < 0) {
-                throw new Error("Impossible d’identifier votre joueur pour cette partie.");
-              }
-              const key = (players[playerIndex].id != null)
-                ? String(players[playerIndex].id)
-                : String(playerIndex);
-
-              const db = window.db;
-              const ref = db.collection('scores_dame_de_pique').doc(gid);
-
-              await ref.set({
-                inputs: {
-                  ...(state.currentInputs || {}),
-                  [key]: v
-                }
-              }, { merge:true });
-
-              successEl.style.display = '';
-              successEl.textContent = "Score enregistré. Il sera pris en compte dès que tous les joueurs auront soumis.";
-
-              setTimeout(()=>{
-                closeScoreModal();
-              }, 900);
-            } catch (err) {
-              console.error(err);
-              errorEl.style.display = '';
-              errorEl.textContent = "Erreur lors de l’enregistrement du score. Réessayez dans quelques secondes.";
-              successEl.style.display = 'none';
-            }
-          }, { capture:true });
-        }
-      }
-
-      function wireReload(){
-        const btn = $('btnReload');
-        if (!btn || btn.__wired) return;
-        btn.__wired = true;
-        btn.addEventListener('click',(e)=>{
-          e.preventDefault();
-          const { ModInit } = window;
-          if (ModInit && typeof ModInit.unsub === 'function') {
-            ModInit.unsub();
-          }
-          if (ModInit && ModInit.gid) {
-            attachListener(ModInit.gid);
-          }
-        }, { capture:true });
-      }
-
-      function wireFinishHold2s(){
-        const btn = $('btnFinish');
-        if (!btn || btn.__wired) return;
-        btn.__wired = true;
-        let timer = null;
-        const fill = btn.querySelector('.fill');
-
-        const start = (ev)=>{
-          ev.preventDefault?.();
-          if (fill) {
-            fill.style.transition = 'none';
-            fill.style.width = '0%';
-            void fill.offsetWidth;
-            fill.style.transition = 'width 2s linear';
-            fill.style.width = '100%';
-          }
-          timer = setTimeout(async ()=>{
-            timer = null;
-            if (fill) {
-              fill.style.transition = 'none';
-              fill.style.width = '100%';
-            }
-            await finishGame();
-          }, 2000);
-        };
-
-        const cancel = (ev)=>{
-          ev.preventDefault?.();
-          if (timer) {
-            clearTimeout(timer);
-            timer = null;
-          }
-          if (fill) {
-            fill.style.transition = 'width 150ms ease-out';
-            fill.style.width = '0%';
-          }
-        };
-
-        btn.addEventListener('mousedown', start, { capture:true });
-        btn.addEventListener('touchstart', start, { capture:true, passive:false });
-        btn.addEventListener('mouseup', cancel, { capture:true });
-        btn.addEventListener('mouseleave', cancel, { capture:true });
-        btn.addEventListener('touchend', cancel, { capture:true });
-        btn.addEventListener('touchcancel', cancel, { capture:true });
-      }
-
-      window.openScoreModal = openScoreModal;
-      window.closeScoreModal = closeScoreModal;
-      window.wireModal = wireModal;
-      window.wireReload = wireReload;
-      window.wireFinishHold2s = wireFinishHold2s;
-    })();
-
-    async function attachListener(gid){
-      const { ModInit } = window;
-      if (!window.db || !gid) return;
-      const db = window.db;
-      const ref = db.collection('scores_dame_de_pique').doc(gid);
-
-      if (ModInit.unsub) {
-        ModInit.unsub();
-        ModInit.unsub = null;
-      }
-
-      ModInit.unsub = ref.onSnapshot((snap)=>{
-        if (!snap.exists) {
-          debugLog("Document inexistant pour gid", gid);
-          return;
-        }
-
-        const data = snap.data() || {};
-        debugLog("Snapshot reçu", data);
-
-        const players = Array.isArray(data.players) ? data.players : (ModInit.state.players || []);
-        const standings = data.standings || null;
-        const totals = extractTotals({ standings, totals:data.totals, lastRound:data.lastRound });
-        const round = Number.isFinite(data.round) ? data.round : (ModInit.state.round || 1);
-        const currentInputs = data.inputs || {};
-        const gameOver = !!data.gameOver;
-        const winnerId = data.winnerId || null;
-
-        ModInit.state = {
-          ...ModInit.state,
-          players,
-          totals: totals || ModInit.state.totals || {},
-          round,
-          currentInputs,
-          gameOver,
-          winnerId
-        };
-
-        if (!ModInit.deviceId) {
-          ModInit.deviceId = data.leaderDeviceId || null;
-        }
-
-        const hostBadge = document.getElementById('hostBadge');
-        const btnFinish = document.getElementById('btnFinish');
-        if (hostBadge) hostBadge.style.display = ModInit.isHost ? '' : 'none';
-        if (btnFinish) btnFinish.style.display = ModInit.isHost ? '' : 'none';
-
-        if (window.ModRender && typeof window.ModRender.renderAll === 'function') {
-          window.ModRender.renderAll();
-        }
-      }, (err)=>{
-        console.error("Erreur onSnapshot", err);
-      });
-    }
-
-    function extractTotals(data){
-      if (data && data.totals && typeof data.totals === 'object') {
-        return data.totals;
-      }
-      if (data && data.standings && typeof data.standings === 'object') {
-        const st = data.standings;
-        if (st.totals && typeof st.totals === 'object') {
-          return st.totals;
-        }
-        const out = {};
-        Object.keys(st).forEach(k=>{
-          const v = st[k];
-          if (v && typeof v === 'object' && Number.isFinite(v.total)) {
-            out[k] = v.total;
-          }
-        });
-        if (Object.keys(out).length > 0) return out;
-      }
-      if (data && data.lastRound && Array.isArray(data.lastRound.perRound)) {
-        const o = {};
-        data.lastRound.perRound.forEach((v,i)=> o[String(i)] = Number(v)||0);
-        return o;
-      }
-      return null;
-    }
-
-    async function finishGame(){
-      const { ModInit } = window;
-      if (!window.db || !ModInit.gid) return;
-      const db = window.db;
-      const ref = db.collection('scores_dame_de_pique').doc(ModInit.gid);
-
-      const totals = ModInit.state.totals || {};
-      let winnerId = null;
-      let minTotal = Infinity;
-
-      const players = (ModInit.state.players || []).slice().sort((a,b)=>(a?.order ?? 0)-(b?.order ?? 0));
-      players.forEach((p,idx)=>{
-        const key = (p.id != null) ? String(p.id) : String(idx);
-        const v = Number.isFinite(totals[key]) ? totals[key] : 0;
-        if (v < minTotal) {
-          minTotal = v;
-          winnerId = p.deviceId || null;
-        }
-      });
-
-      try {
-        await ref.set({
-          gameOver: true,
-          winnerId: winnerId || null
-        }, { merge:true });
-        debugLog("Partie terminée, winnerId=", winnerId);
-      } catch (err) {
-        console.error("Erreur finishGame", err);
-      }
-    }
-
-    (function bootstrap(){
-      const params = new URLSearchParams(window.location.search);
-      const gid = params.get('gid');
-      const isHost = params.get('host') === '1';
-
-      const { ModInit } = window;
-      ModInit.gid = gid;
-      ModInit.isHost = isHost;
-
-      if (!gid) {
-        console.error("Aucun gid fourni dans l’URL.");
-      } else {
-        attachListener(gid);
-      }
-
-      if (window.wireModal) window.wireModal();
-      if (window.wireReload) window.wireReload();
-      if (window.wireFinishHold2s) window.wireFinishHold2s();
-    })();
-  </script>
+  <!-- === actions/ui === -->
+  <script type="module" src="dame_de_pique_actions.js"></script>
 </body>
 </html>
