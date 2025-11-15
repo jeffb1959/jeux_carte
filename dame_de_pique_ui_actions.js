@@ -157,7 +157,7 @@ function openScoreModal(){
     }
   });
 
-  document.getElementById('btnCancelScore')?.addEventListener('click', onCancel, { once:true });
+
   document.getElementById('btnAcceptScore')?.addEventListener('click', onAccept, { once:true });
 
   // Fermer si clic en dehors de la boîte
@@ -269,3 +269,4 @@ onReady(async ()=>{
     diagnosticsPush(notes);
   }
 });
+
