@@ -1,77 +1,12 @@
-<!-- Version v7.4.1 — 2025-11-14 — Zone TEST : fin de partie (gameOver) gérée dans l'UI -->
+<!-- Version v7.5.1 — 2025-11-14 — Zone TEST : Redondance éliminée / CSS externe -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.4.1 (zone test)</title>
-  <style>
-    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
-    *{ box-sizing:border-box } html,body{ height:100% }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); }
-    .wrap{ max-width:420px; margin:0 auto; padding:18px; display:grid; gap:16px }
-    .card{ background:color-mix(in srgb, var(--card) 92%, white 8%); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
-    h1{ margin:0 0 4px; font-size:clamp(22px,5vw,28px) }
-    .subhead{ margin:0; font-size:clamp(14px,3.5vw,16px); color:var(--muted) }
-    .muted{ color:var(--muted) }
-    .line{ display:flex; align-items:center; justify-content:space-between; background:#0f1a30; border:1px solid #243252; border-radius:12px; padding:10px 12px; }
-    .badge{ display:inline-block; margin-left:10px; padding:4px 8px; border-radius:999px; font-size:.85rem; font-weight:700; background:#fecaca; color:#7f1d1d; vertical-align:middle }
-    .btn{ appearance:none; border:none; cursor:pointer; width:65%; min-height:54px; padding:14px; border-radius:14px; font-size:1.2rem; font-weight:800; color:#0c111b; background:#22c55e; display:block; margin:0 auto; transition:opacity .2s ease, transform .02s ease-in-out; will-change: transform; text-align:center; }
-    .btn:active{ transform:translateY(1px) } .btn[disabled]{ opacity:.55; cursor:not-allowed }
-    .btn-pale-danger{ color:var(--danger-text); background:var(--danger-pale); font-size:.9rem; padding:8px 14px; min-height:36px; }
-    .hold2s{ position:relative; overflow:hidden } .hold2s .fill{ position:absolute; inset:0; width:0%; background:rgba(0,0,0,.08); pointer-events:none; transition:width 2s linear }
-    .footer{ text-align:center; color:var(--muted); font-size:.95rem }
-    @media (min-width:640px){ .wrap{ max-width:520px } }
+  <title>Dame de Pique — v7.5.1 (zone test)</title>
+  <link rel="stylesheet" href="dame_de_pique.css">
 
-    /* Fenêtre modale de saisie de score */
-    .modal-backdrop{
-      position:fixed;
-      inset:0;
-      background:rgba(15,23,42,.78);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:50;
-    }
-    .modal{
-      width:min(520px, 92vw);
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:18px;
-      padding:16px;
-      box-shadow:0 18px 40px rgba(0,0,0,.6);
-    }
-    .modal h3{ margin:0 0 6px; font-size:1.15rem; }
-    .modal .list-line{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:6px 0;
-      font-size:.95rem;
-    }
-    .modal input[type=number]{
-      width:90px;
-      padding:8px;
-      border-radius:10px;
-      border:1px solid #35476d;
-      background:#0f1a30;
-      color:var(--text);
-    }
-    .modal .toolbar{
-      display:flex;
-      gap:8px;
-      justify-content:flex-end;
-      margin-top:12px;
-    }
-    .btn-secondary{
-      background:#334155;
-      color:#e5e7eb;
-    }
-    .modal .msg{
-      margin-top:6px;
-      font-size:.9rem;
-    }
-  </style>
 </head>
 <body>
   <main class="wrap">
@@ -79,62 +14,63 @@
       <h1 id="title">Dame de Pique</h1>
       <h2 id="passRule" class="subhead">Règle : —</h2>
       <div class="muted" id="meta" style="margin-top:4px">
-        Code soirée: <strong id="code">—</strong> • Tour <span id="round">1</span> • Brasseur: <strong id="dealerName">—</strong>
+        Code soirée: <strong id="code">—</strong> • Tour <strong id="round">1</strong> • Brasseur: <strong id="dealerName">—</strong>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="muted" id="ruleHint"></span>
+        <div class="pill" aria-label="Statut de la connexion">
+          <span class="pill-dot"></span>
+          <span id="connStatus">Hors ligne</span>
+        </div>
       </div>
     </header>
 
-    <section class="card" aria-labelledby="playersTitle">
-      <h2 id="playersTitle" style="margin:0 0 8px;font-size:1.2rem">Joueurs</h2>
-      <div id="playersList" class="grid" style="display:grid;gap:10px"></div>
+    <section class="card" aria-label="Joueurs et totaux">
+      <div class="section-title">Joueurs</div>
+      <div id="playersList" class="players"></div>
     </section>
 
-    <section class="card" aria-labelledby="scoresTitle">
-      <h2 id="scoresTitle" style="margin:0 0 8px;font-size:1.2rem">Scores</h2>
+    <section class="card" aria-label="Scores de la ronde en cours">
+      <div class="scores-header">
+        <div class="section-title">Scores</div>
+      </div>
+      <p class="scores-meta">
+        Somme des scores attendue : <strong>25 points</strong>.
+      </p>
       <button id="btnOpenScore" class="btn" type="button" aria-haspopup="dialog" aria-controls="modalScore">
         Inscrire mon pointage
       </button>
-      <!-- <div id="totals" class="grid" style="display:grid;gap:10px;margin-top:10px"></div> -->
-      <div id="roundStatus" class="muted" aria-live="polite">0/0 soumis</div>
-      <div id="roundError" class="muted" aria-live="assertive"></div>
+      <div id="roundStatus" class="status" aria-live="polite">0/0 soumis</div>
+      <div id="roundError" class="error" aria-live="assertive"></div>
     </section>
 
-    <!-- Fenêtre modale de saisie de score (même pour tous les joueurs) -->
-    <div id="modalScoreBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalScoreTitle">
-      <div class="modal">
-        <h3 id="modalScoreTitle">Saisie du pointage — Ronde <span id="modalRound">1</span></h3>
-        <div class="muted" id="modalInfo">
-          Chaque joueur ouvre cette fenêtre depuis le bouton « Inscrire mon pointage ».
-        </div>
-
-        <div id="modalPlayers" style="margin-top:8px;"></div>
-
-        <div style="margin-top:10px;">
-          Mon score pour cette ronde :
-          <input id="myScoreInput" type="number" min="0" max="25" step="1" value="0" />
-        </div>
-
-        <div id="modalMsg" class="msg muted"></div>
-
-        <div class="toolbar">
-          <button id="btnCancelScore" class="btn btn-secondary" type="button">Annuler</button>
-          <button id="btnAcceptScore" class="btn" type="button">Accepter</button>
-        </div>
-      </div>
-    </div>
-
-    <details class="card" id="diag" style="font-size:.95rem">
-      <summary>Diagnostics</summary>
-      <pre id="diagOutput" style="white-space:pre-wrap"></pre>
-    </details>
-
-    <section class="card" id="finishSection">
-      <button id="btnFinish" class="btn btn-pale-danger hold2s" type="button" aria-label="Fin de partie (maintenir 2 secondes)">
-        <span>Fin de partie (maintenir)</span>
-        <div class="fill" aria-hidden="true"></div>
+    <section class="card" aria-label="Contrôles de la partie">
+      <div class="section-title">Contrôles</div>
+      <p class="muted" id="hostInfo">Vous n’êtes pas l’hôte de la partie.</p>
+      <button id="btnRefresh" class="btn btn-secondary" type="button">
+        Rafraîchir l’écran
       </button>
     </section>
 
-    <div class="footer">v7.4.1 — zone test (totaux + ronde + fin de partie gameOver)</div>
+    <section class="card" aria-label="Diagnostics">
+      <details>
+        <summary>Diagnostics (debug)</summary>
+        <div class="diag">
+          <div id="diagOutput"></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card" aria-label="Fin de partie">
+      <button id="btnFinish" class="btn-pale-danger hold2s" type="button">
+        <span>Fin de partie (maintenir)</span>
+        <div class="fill"></div>
+      </button>
+      <div id="hostOnlyHint" class="hostOnlyText">Visible uniquement pour l’hôte de la partie.</div>
+      <div id="endMessage" class="endMsg"></div>
+    </section>
+
+    <div class="footer">v7.5.1 — zone test (même UI, CSS externe)</div>
   </main>
 
   <!-- Config Firebase -->
@@ -145,14 +81,12 @@
       projectId: "soireecartev2",
       storageBucket: "soireecartev2.firebasestorage.app",
       messagingSenderId: "784781686361",
-      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+      appId: "1:784781686361:web:7b01398afbe1dab3652be2"
     };
   </script>
 
-  <!-- === init/app === -->
+  <!-- Init / état global -->
   <script type="module">
-    const $ = (id)=>document.getElementById(id);
-
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
     import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -165,26 +99,39 @@
       round: 1,
       totals: {},
       roundScores: {},
-      isHost: false,
-      gameOver: false,
-      lastRound: null,
       lastRoundPer: null,
-      authUid: null,
+      myIndex: -1,
       deviceId: null,
+      authUid: null,
+      _db: null,
       currentInputs: {},
       scoresRaw: null,
-      winnerId: null,   // suivi du gagnant éventuel
-      _db: null
+      gameOver: false,
+      winnerId: null
     };
 
     function readUrl(){
-      const qs = new URLSearchParams(location.search);
-      state.soireeCode = String(qs.get("code")||"").replace(/\D/g,"").slice(0,4);
-      state.gameId     = String(qs.get("gid")||"");
-      if(state.soireeCode) $("code").textContent = state.soireeCode;
+      const params = new URLSearchParams(location.search);
+      state.soireeCode = params.get("code") || "";
+      state.gameId     = params.get("gid") || "";
+      const codeSpan=document.getElementById("code");
+      if(codeSpan) codeSpan.textContent = state.soireeCode || "—";
+      const roundLabel=document.getElementById("round");
+      if(roundLabel) roundLabel.textContent = String(state.round);
     }
 
-    // Résolution du deviceId au démarrage (URL ?did=... ou localStorage)
+    function diagnosticsPush(lines){
+      const el = document.getElementById("diagOutput");
+      if(!el) return;
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,"0");
+      const mm = String(now.getMinutes()).padStart(2,"0");
+      const ss = String(now.getSeconds()).padStart(2,"0");
+      const prefix = `[${hh}:${mm}:${ss}] `;
+      const text = (Array.isArray(lines)? lines:[lines]).map(l=>prefix+l).join("\n");
+      el.textContent = text + "\n" + el.textContent;
+    }
+
     function resolveDeviceIdAtBoot() {
       try {
         const qs = new URLSearchParams(location.search);
@@ -211,8 +158,10 @@
     }
 
     function bootUi(){
-      $("round").textContent = String(state.round);
-      $("dealerName").textContent = "—";
+      const passRuleEl = document.getElementById("passRule");
+      if (passRuleEl) passRuleEl.textContent = "Règle : —";
+      const cs = document.getElementById("connStatus");
+      if(cs) cs.textContent = "Connexion en cours…";
     }
 
     async function ensureAuth(){
@@ -245,10 +194,10 @@
       bootUi();
     }
 
-    window.ModInit = { state, boot, ensureAuth, getDb };
+    window.ModInit = { state, boot, ensureAuth, getDb, diagnosticsPush };
   </script>
 
-  <!-- === data/soiree === -->
+  <!-- Soirée -->
   <script type="module">
     import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
     let unsubscribeSoiree=null;
@@ -266,16 +215,16 @@
       );
       return ()=>{ if(unsubscribeSoiree) unsubscribeSoiree(); };
     }
+
     window.ModSoiree = { listenSoiree };
   </script>
 
-  <!-- === data/scores === (adaptatif) -->
+  <!-- Scores (écoute + écriture inputs.<deviceId>) -->
   <script type="module">
     import { doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
     let unsubscribeScores=null;
 
     function extractTotals(data){
-      // 1) totals direct (objet)
       if (data && typeof data.totals === 'object' && !Array.isArray(data.totals)) {
         const t = data.totals;
         const keys = Object.keys(t);
@@ -283,26 +232,32 @@
         if (looksLikePN) {
           const out = {};
           for (const k of keys) {
-            const n = parseInt(k.slice(1), 10);
-            const idx = Number.isFinite(n) ? n-1 : null;
-            if (idx != null && idx >= 0) out[String(idx)] = Number(t[k]) || 0;
+            const m = /^p(\d+)$/i.exec(k);
+            const idx = m ? parseInt(m[1], 10) : null;
+            if (idx != null) out[String(idx)] = Number(t[k]) || 0;
+          }
+          return out;
+        }
+        const looksLikeIndex = keys.every(k=>/^\d+$/.test(k));
+        if (looksLikeIndex) {
+          const out={};
+          for(const k of keys){
+            const idx = parseInt(k,10);
+            out[String(idx)] = Number(t[k]) || 0;
           }
           return out;
         }
         return t;
       }
 
-      // 2) standings.totals (si jamais utilisé plus tard)
       if (data && data.standings && typeof data.standings.totals === 'object') {
         return data.standings.totals;
       }
 
-      // 3) standings objet simple
       if (data && data.standings && typeof data.standings === 'object' && !Array.isArray(data.standings)) {
         return data.standings;
       }
 
-      // 4) lastRound.perRound comme fallback (dernier tour uniquement)
       if (data && data.lastRound && Array.isArray(data.lastRound.perRound)) {
         const o = {}; data.lastRound.perRound.forEach((v,i)=> o[String(i)] = Number(v)||0);
         return o;
@@ -367,12 +322,13 @@
         return;
       }
       if (!state.deviceId) {
-        console.warn("[submitScore] deviceId non initialisé (vérifier resolveDeviceIdAtBoot).");
+        console.warn("[submitScore] deviceId manquant");
         return;
       }
+
       const s = Number(score);
       if (!Number.isFinite(s)) {
-        console.warn("[submitScore] score invalide");
+        console.warn("[submitScore] score invalide:", score);
         return;
       }
 
@@ -387,16 +343,15 @@
     window.ModScores = { listenScores, submitScoreForCurrentDevice };
   </script>
 
-  <!-- === logic/rounds === -->
+  <!-- Règles de ronde -->
   <script type="module">
     import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
     function computePassRule(round){
-      const rules=['À droite','À gauche','Au centre','Garde tes cartes'];
+      const rules=['À droite','À gauche','À centre','Garde tes cartes'];
       return rules[(Math.max(1,round)-1)%4];
     }
 
-    // Calcule un résumé de ronde à partir des inputs Firestore (local, sans écriture)
     function computeRoundSummary(players, inputs){
       const ordered = (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
       const perRound = [];
@@ -419,17 +374,16 @@
       const isComplete = expected > 0 && filledCount === expected;
       const isValid25 = isComplete && sum === 25;
 
-      // Grand Chelem : un seul joueur à 25, tous les autres à 0
       let grandIndex = -1;
       let isGrand = false;
       if (isComplete && isValid25) {
         const nonZero = [];
-        perRound.forEach((v,i)=>{
-          if (v && v > 0) nonZero.push({v,i});
+        perRound.forEach((v, idx) => {
+          if (v && v !== 0) nonZero.push({ idx, v });
         });
         if (nonZero.length === 1 && nonZero[0].v === 25) {
           isGrand = true;
-          grandIndex = nonZero[0].i;
+          grandIndex = nonZero[0].idx;
         }
       }
 
@@ -443,12 +397,10 @@
       };
     }
 
-    // Écrit la ronde et les totaux dans Firestore quand la somme vaut 25
     async function applyRoundScore(summary){
       const mod = window.ModInit || {};
       const state = mod.state || {};
       const getDb = mod.getDb;
-
       if (!getDb) {
         console.warn('[applyRoundScore] getDb absent');
         return;
@@ -463,64 +415,69 @@
         return;
       }
 
-      // 🔒 Si la partie est déjà terminée, on ne touche plus aux scores
       if (state.scoresRaw && state.scoresRaw.gameOver === true) {
         console.warn('[applyRoundScore] Partie déjà terminée (gameOver=true). Aucune nouvelle ronde appliquée.');
         return;
       }
 
       if (!summary || !summary.isComplete || !summary.isValid25) {
-        return; // rien à faire si la ronde n'est pas complète ou invalide
+        return;
       }
 
       const playersOrdered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
       const n = playersOrdered.length;
       if (!n) return;
 
-      // Totaux de base (normalisés "0","1",...)
       const baseTotals = [];
       for (let i=0;i<n;i++){
         const key = String(i);
-        baseTotals[i] = Number(state.totals?.[key] || 0);
+        const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
+        baseTotals.push(total);
       }
 
-      // Points de la ronde (après éventuel Grand Chelem)
       let roundVals = summary.perRound.slice();
+      let gameOver = false;
+
       if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
-        roundVals = roundVals.map((v,idx)=> idx===summary.grandChelemIndex ? 0 : 25);
+        roundVals = roundVals.map((v, idx) => (idx === summary.grandChelemIndex ? 0 : 25));
       }
 
-      const newTotalsArr = baseTotals.map((t,i)=> t + (Number(roundVals[i])||0));
+      const newTotals = baseTotals.map((t, idx) => {
+        const add = Number.isFinite(roundVals[idx]) ? roundVals[idx] : 0;
+        return t + add;
+      });
 
-      // Détermination de fin de partie
-      let gameOver = false;
-      let winnerId = null;
-      let maxTotal = -Infinity;
-      newTotalsArr.forEach(v => { if (v>maxTotal) maxTotal = v; });
-      if (Number.isFinite(maxTotal) && maxTotal >= 100) {
-        gameOver = true;
-        let minTotal = Infinity;
-        let winIndex = -1;
-        newTotalsArr.forEach((v,i)=>{
-          if (v < minTotal) {
-            minTotal = v;
-            winIndex = i;
-          }
-        });
-        if (winIndex >= 0 && playersOrdered[winIndex] && playersOrdered[winIndex].deviceId) {
-          winnerId = playersOrdered[winIndex].deviceId;
+      const limit = 100;
+      let winnerIdx = -1;
+      for (let i=0;i<n;i++){
+        if (newTotals[i] >= limit) {
+          gameOver = true;
         }
       }
 
-      // Map "p1","p2",... pour compatibilité avec ton schema existant
-      const totalsMap = {};
-      newTotalsArr.forEach((v,i)=>{
-        totalsMap['p'+(i+1)] = v;
-      });
+      if (gameOver) {
+        let minVal = Infinity;
+        let minIdx = -1;
+        for (let i=0;i<n;i++){
+          if (newTotals[i] < minVal) {
+            minVal = newTotals[i];
+            minIdx = i;
+          }
+        }
+        winnerIdx = minIdx;
+      }
 
-      const roundNumber = state.round || 1;
+      const ref = doc(db, "scores_dame_de_pique", state.gameId);
 
-      const ref = doc(db, 'scores_dame_de_pique', state.gameId);
+      const totalsMap={};
+      newTotals.forEach((v, idx)=> totalsMap[String(idx)] = v);
+
+      let winnerId = null;
+      if (winnerIdx >= 0 && playersOrdered[winnerIdx]) {
+        winnerId = playersOrdered[winnerIdx].deviceId || null;
+      }
+
+      const roundNumber = Number.isInteger(state.round) ? state.round : 1;
       const payload = {
         lastRound: {
           appliedGrandChelem: !!summary.isGrandChelem,
@@ -535,7 +492,6 @@
         gameOver: gameOver,
         winnerId: gameOver ? (winnerId || null) : null,
         roundError: "",
-        // on vide les inputs pour forcer une nouvelle saisie à la ronde suivante
         inputs: {}
       };
 
@@ -547,12 +503,12 @@
       }
     }
 
-    function checkGameOver(){ return false; } // pas utilisé directement ici
+    function checkGameOver(){ return false; }
 
     window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver };
   </script>
 
-  <!-- === ui/render === -->
+  <!-- Rendu UI -->
   <script type="module">
     const $=(id)=>document.getElementById(id);
 
@@ -561,309 +517,330 @@
       const { computePassRule } = window.ModRounds;
       const host=$('playersList'); if(!host) return; host.innerHTML='';
       (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,idx)=>{
-        const row=document.createElement('div'); row.className='line';
-        const name=document.createElement('div'); name.textContent=p?.name||`Joueur ${idx+1}`;
+        const row=document.createElement('div'); row.className='player-row';
+        const left=document.createElement('div');
+        const name=document.createElement('div'); name.className='player-name'; name.textContent=p?.name||`Joueur ${idx+1}`;
         if(idx===state.dealerIndex){
-          const badge=document.createElement('span'); badge.className='badge'; badge.textContent='Brasseur'; name.appendChild(badge);
+          const badge=document.createElement('span'); badge.className='badge'; badge.textContent='Brasseur';
+          name.appendChild(badge);
         }
-        const val=document.createElement('div'); val.className='muted';
+        left.appendChild(name);
+        const right=document.createElement('div'); right.className='player-total';
         const key = (p.id!=null)? String(p.id): String(idx);
-        const total = Number.isFinite(window.ModInit.state.totals?.[key]) ? window.ModInit.state.totals[key] : 0;
-        val.textContent=`Total: ${total}`;
-        row.appendChild(name); row.appendChild(val); host.appendChild(row);
+        const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
+        right.textContent=`Total: ${total}`;
+        row.appendChild(left); row.appendChild(right); host.appendChild(row);
       });
       const pass=computePassRule(window.ModInit.state.round);
       const dealerName=(window.ModInit.state.players?.[window.ModInit.state.dealerIndex]?.name)||'—';
       $('dealerName').textContent=dealerName; $('round').textContent=String(window.ModInit.state.round);
       const meta=document.getElementById('meta');
       if(meta){
-        meta.innerHTML=`Code soirée: <strong id="code">${window.ModInit.state.soireeCode||'—'}</strong> • Tour <span id="round">${window.ModInit.state.round}</span> • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
+        meta.innerHTML=`Code soirée: <strong id="code">${window.ModInit.state.soireeCode||'—'}</strong> • Tour <strong id="round">${window.ModInit.state.round}</strong> • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
       }
       const passEl=document.getElementById('passRule'); if(passEl) passEl.textContent=`Règle : ${pass}`;
     }
 
     function renderTotals(){
-  const { state } = window.ModInit;
-  const host = document.getElementById('totals');
+      const { state } = window.ModInit;
+      const host = document.getElementById('totals');
 
-  // Si l'élément existe (ancienne UI ou futur besoin), on le remplit,
-  // sinon on saute seulement cette partie visuelle.
-  if (host) {
-    host.innerHTML = '';
+      if (host) {
+        host.innerHTML = '';
 
-    (state.players||[]).forEach((p,idx)=>{
-      const line=document.createElement('div'); line.className='line';
-      const n=document.createElement('div'); n.textContent=p?.name||`Joueur ${idx+1}`;
-      const v=document.createElement('div');
-      const key = (p.id!=null)? String(p.id): String(idx);
-      const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
-      v.textContent=String(total);
-      line.appendChild(n); line.appendChild(v); host.appendChild(line);
-    });
-  }
-
-  // Statut de la ronde basé sur les inputs Firestore
-  const inputs = state.currentInputs || {};
-  const submitted = Object.keys(inputs).length;
-  const expected = (state.players||[]).length;
-  const rs = document.getElementById('roundStatus');
-  if (rs) rs.textContent = `${submitted}/${expected} soumis`;
-
-  const re = document.getElementById('roundError');
-  if (re) {
-    const { computeRoundSummary, applyRoundScore } = window.ModRounds;
-
-    // 🔚 Cas 1 : partie déjà terminée
-    if (state.gameOver) {
-      if (rs) rs.textContent = "Partie terminée.";
-
-      // Désactiver le bouton "Inscrire mon pointage"
-      const btn = document.getElementById('btnOpenScore');
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = "Partie terminée";
-      }
-
-      // Chercher le gagnant (si winnerId connu)
-      let winnerName = "—";
-      let winnerTotal = null;
-
-      const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-
-      if (state.winnerId) {
-        const idx = ordered.findIndex(p => p && p.deviceId === state.winnerId);
-        if (idx >= 0) {
-          winnerName = ordered[idx].name || `Joueur ${idx+1}`;
-          const key = String(idx);
-          winnerTotal = Number(state.totals?.[key] || 0);
-        }
-      }
-
-      // Si winnerId manquant, on essaie de déterminer le plus petit total
-      if (winnerName === "—") {
-        let minTotal = Infinity;
-        let minIdx = -1;
-        Object.keys(state.totals || {}).forEach(k=>{
-          const v = Number(state.totals[k] || 0);
-          if (v < minTotal) {
-            minTotal = v;
-            minIdx = parseInt(k,10);
-          }
+        (state.players||[]).forEach((p,idx)=>{
+          const line=document.createElement('div'); line.className='line';
+          const n=document.createElement('div'); n.textContent=p?.name||`Joueur ${idx+1}`;
+          const v=document.createElement('div');
+          const key = (p.id!=null)? String(p.id): String(idx);
+          const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
+          v.textContent=String(total);
+          line.appendChild(n); line.appendChild(v); host.appendChild(line);
         });
-        if (minIdx >= 0 && ordered[minIdx]) {
-          winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
-          winnerTotal = minTotal;
+      }
+
+      const inputs = state.currentInputs || {};
+      const submitted = Object.keys(inputs).length;
+      const expected = (state.players||[]).length;
+      const rs = document.getElementById('roundStatus');
+      if (rs) rs.textContent = `${submitted}/${expected} soumis`;
+
+      const re = document.getElementById('roundError');
+      if (re) {
+        const { computeRoundSummary, applyRoundScore } = window.ModRounds;
+
+        if (state.gameOver) {
+          if (rs) rs.textContent = "Partie terminée.";
+
+          const btn = document.getElementById('btnOpenScore');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Partie terminée";
+          }
+
+          let winnerName = "—";
+          let winnerTotal = null;
+
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+
+          if (state.winnerId) {
+            const idx = ordered.findIndex(p => p && p.deviceId === state.winnerId);
+            if (idx >= 0) {
+              winnerName = ordered[idx].name || `Joueur ${idx+1}`;
+              const key = String(idx);
+              winnerTotal = Number(state.totals?.[key] || 0);
+            }
+          }
+
+          if (winnerName === "—") {
+            let minTotal = Infinity;
+            let minIdx = -1;
+            Object.keys(state.totals || {}).forEach(k=>{
+              const v = Number(state.totals[k] || 0);
+              if (v < minTotal) {
+                minTotal = v;
+                minIdx = parseInt(k,10);
+              }
+            });
+            if (minIdx >= 0 && ordered[minIdx]) {
+              winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
+              winnerTotal = minTotal;
+            }
+          }
+
+          if (winnerTotal != null) {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName} avec ${winnerTotal} points.`;
+          } else {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
+          }
+
+          return;
+        }
+
+        const summary = computeRoundSummary(state.players, inputs);
+
+        if (!summary.isComplete) {
+          re.textContent = "";
+        } else if (!summary.isValid25) {
+          re.textContent = `Erreur: la somme des scores est ${summary.sum}, elle doit être exactement 25.`;
+        } else if (summary.isGrandChelem) {
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+          const winnerPlayer = ordered[summary.grandChelemIndex];
+          const nm = winnerPlayer?.name || `Joueur ${summary.grandChelemIndex+1}`;
+          re.textContent = `Grand chelem détecté pour ${nm} (25). Les totaux seront ajustés (0 pour ${nm}, 25 pour les autres).`;
+          applyRoundScore(summary);
+        } else {
+          re.textContent = `OK : tous les scores sont saisis et la somme est 25. Les totaux sont mis à jour pour la prochaine ronde.`;
+          applyRoundScore(summary);
         }
       }
-
-      if (winnerTotal != null) {
-        re.textContent = `Partie terminée. Gagnant : ${winnerName} avec ${winnerTotal} points.`;
-      } else {
-        re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
-      }
-
-      // On ne fait plus de validation de ronde ni d'appel à applyRoundScore
-      return;
     }
-
-    // 🔁 Cas 2 : partie en cours → logique de validation de ronde
-    const summary = computeRoundSummary(state.players, inputs);
-
-    if (!summary.isComplete) {
-      re.textContent = "";
-    } else if (!summary.isValid25) {
-      re.textContent = `Erreur: la somme des scores est ${summary.sum}, elle doit être exactement 25.`;
-    } else if (summary.isGrandChelem) {
-      const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
-      const winnerPlayer = ordered[summary.grandChelemIndex];
-      const nm = winnerPlayer?.name || `Joueur ${summary.grandChelemIndex+1}`;
-      re.textContent = `Grand chelem détecté pour ${nm} (25). Les totaux seront ajustés (0 pour ${nm}, 25 pour les autres).`;
-      applyRoundScore(summary);
-    } else {
-      re.textContent = `OK : tous les scores sont saisis et la somme est 25. Les totaux sont mis à jour pour la prochaine ronde.`;
-      applyRoundScore(summary);
-    }
-  }
-}
-
 
     function renderAll(){
       renderPlayers();
       renderTotals();
-      const { state } = window.ModInit;
-      document.body.style.background = (state.myIndex===state.dealerIndex)?'#0f2e16':'var(--bg)';
     }
 
     window.ModUI = { renderPlayers, renderTotals, renderAll };
   </script>
 
-  <!-- === actions/ui === -->
+  <!-- Actions / événements -->
   <script type="module">
     const $=(id)=>document.getElementById(id);
+    const { state, boot, ensureAuth, getDb, diagnosticsPush } = window.ModInit;
+    const { listenSoiree } = window.ModSoiree;
+    const { listenScores, submitScoreForCurrentDevice } = window.ModScores;
+    const { computeRoundSummary, applyRoundScore } = window.ModRounds;
+    const { renderPlayers, renderTotals, renderAll } = window.ModUI;
 
-    function diagnosticsPush(lines){
-      const d=document.getElementById('diagOutput');
-      if(d) d.textContent=lines.join('\n');
+    function openModal(){
+      const bd=$('modalScoreBackdrop');
+      if(bd){ bd.style.display='flex'; }
+      const input=$('scoreInput');
+      if(input){
+        input.value='';
+        input.focus();
+      }
+      const err=$('modalError'); if(err) err.textContent='';
     }
 
-    function wireOpenScore(){
-      const btn=$('btnOpenScore'); if(!btn||btn.__wired) return; btn.__wired=true;
-      btn.addEventListener('click',(e)=>{ e.preventDefault(); openScoreModal(); },{capture:true});
+    function closeModal(){
+      const bd=$('modalScoreBackdrop');
+      if(bd){ bd.style.display='none'; }
     }
 
-    function wireFinishHold2s(){
-      const btn=$('btnFinish'); if(!btn||btn.__wired) return; btn.__wired=true; let timer=null; const fill=btn.querySelector('.fill');
-      const start=(ev)=>{
-        ev.preventDefault?.();
-        if(fill){
-          fill.style.transition='none';
-          fill.style.width='0%';
-          void fill.offsetWidth;
-          fill.style.transition='width 2s linear';
-          fill.style.width='100%';
+    function setupModal(){
+      const btnOpen=$('btnOpenScore');
+      if(btnOpen){
+        btnOpen.addEventListener('click',()=>{
+          if(state.gameOver){
+            const re=$('roundError');
+            if(re) re.textContent="La partie est terminée.";
+            return;
+          }
+          openModal();
+        });
+      }
+
+      const btnCancel=$('btnCancelScore');
+      if(btnCancel){
+        btnCancel.addEventListener('click',(ev)=>{
+          ev.preventDefault();
+          closeModal();
+        });
+      }
+
+      const form=$('scoreForm');
+      if(form){
+        form.addEventListener('submit', async (ev)=>{
+          ev.preventDefault();
+          const input=$('scoreInput');
+          const modalErr=$('modalError');
+          const v = input ? Number(input.value) : NaN;
+          if(!Number.isFinite(v) || v<0 || v>25){
+            if(modalErr) modalErr.textContent="Entrez un nombre entre 0 et 25.";
+            return;
+          }
+          if(modalErr) modalErr.textContent="";
+          try{
+            await submitScoreForCurrentDevice(v);
+          }catch(e){
+            console.error('[scoreForm] erreur submitScore:', e);
+            if(modalErr) modalErr.textContent="Erreur lors de l’enregistrement du score. Réessayez.";
+            return;
+          }
+          closeModal();
+        });
+      }
+    }
+
+    function setupRefresh(){
+      const btn=$('btnRefresh');
+      if(!btn) return;
+      btn.addEventListener('click',()=>{
+        const dv=$('diagOutput');
+        if(dv){
+          const now=new Date();
+          const hh=String(now.getHours()).padStart(2,'0');
+          const mm=String(now.getMinutes()).padStart(2,'0');
+          const ss=String(now.getSeconds()).padStart(2,'0');
+          dv.textContent=`[${hh}:${mm}:${ss}] Rafraîchissement manuel demandé.\n`+dv.textContent;
         }
-        timer=setTimeout(()=>{
-          clearTimeout(timer); timer=null;
-          alert('Fin de partie (placeholder) — écriture Firestore v7.6.0');
-        },2000);
-      };
-      const cancel=()=>{
-        clearTimeout(timer); timer=null;
-        if(fill){ fill.style.transition='none'; fill.style.width='0%'; }
-      };
-      ['mousedown','touchstart'].forEach(ev=> btn.addEventListener(ev,start,{passive:false}));
-      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> btn.addEventListener(ev,cancel));
-    }
-
-    function ensureFinishIsLast(){
-      const main=document.querySelector('main.wrap');
-      const finish=document.getElementById('finishSection');
-      if(main&&finish&&main.lastElementChild!==finish){
-        main.appendChild(finish);
-      }
-    }
-
-    // Fenêtre modale de saisie de score (synchro Firestore)
-    function openScoreModal(){
-      const { state } = window.ModInit;
-
-      // Si la partie est terminée, on ne permet plus la saisie
-      if (state.gameOver) {
-        alert("La partie est terminée. Il n'est plus possible de saisir des points.");
-        return;
-      }
-
-      const backdrop = document.getElementById('modalScoreBackdrop');
-      const listEl   = document.getElementById('modalPlayers');
-      const roundEl  = document.getElementById('modalRound');
-      const inputEl  = document.getElementById('myScoreInput');
-      const msgEl    = document.getElementById('modalMsg');
-
-      if(!backdrop || !listEl || !roundEl || !inputEl || !msgEl){
-        console.warn('[openScoreModal] éléments manquants dans le DOM.');
-        return;
-      }
-
-      msgEl.textContent = '';
-      roundEl.textContent = String(state.round || 1);
-
-      const players = state.players || [];
-      const inputs = state.currentInputs || {};
-
-      // Liste des joueurs avec leur score de ronde courant
-      listEl.innerHTML = '';
-      players.forEach((p, idx) => {
-        const line = document.createElement('div');
-        line.className = 'list-line';
-        const left = document.createElement('div');
-        left.textContent = (p && p.name) ? p.name : `Joueur ${idx+1}`;
-        const right = document.createElement('div');
-        const did = p && p.deviceId;
-        const v = (did && Object.prototype.hasOwnProperty.call(inputs, did)) ? inputs[did] : null;
-        right.textContent = (v != null) ? `${v} pts` : '—';
-        line.appendChild(left);
-        line.appendChild(right);
-        listEl.appendChild(line);
       });
+    }
 
-      // Pré-remplir mon score si déjà saisi
-      let myVal = "";
-      if (state.deviceId && inputs && Object.prototype.hasOwnProperty.call(inputs, state.deviceId)) {
-        myVal = String(inputs[state.deviceId]);
+    function setupFinishButton(){
+      const btnFinish = $('btnFinish');
+      const finishSection = btnFinish?.closest('.card');
+      const fill = btnFinish?.querySelector('.fill');
+
+      function updateHostVisibility(){
+        const isHost = !!(state.deviceId && state.players?.[state.dealerIndex]?.deviceId === state.deviceId);
+        if(finishSection){
+          finishSection.style.display = isHost ? 'block' : 'none';
+        }
       }
-      inputEl.value = myVal;
-      inputEl.focus();
-      backdrop.style.display = 'flex';
 
-      const close = () => {
-        backdrop.style.display = 'none';
-        msgEl.textContent = '';
-      };
+      state._updateHostVisibility = updateHostVisibility;
+      updateHostVisibility();
 
-      const onCancel = () => {
-        close();
-      };
+      if(!btnFinish || !fill) return;
 
-      const onAccept = async () => {
-        const raw = inputEl.value.trim();
-        const val = Number(raw);
-        if (!Number.isFinite(val) || val < 0 || val > 25) {
-          msgEl.textContent = "Le score doit être un nombre entre 0 et 25.";
+      let timer=null;
+      let progress=0;
+      const totalHold=2000;
+      const step=50;
+
+      function resetFill(){
+        progress=0;
+        fill.style.width='0%';
+      }
+
+      btnFinish.addEventListener('mousedown',(ev)=>{
+        ev.preventDefault();
+        if(state.gameOver){
+          diagnosticsPush('Fin de partie déjà appliquée.');
           return;
         }
-        msgEl.textContent = "Enregistrement...";
-        try{
-          if (window.ModScores && window.ModScores.submitScoreForCurrentDevice) {
-            await window.ModScores.submitScoreForCurrentDevice(val);
-            msgEl.textContent = "Score envoyé.";
-          }else{
-            msgEl.textContent = "Module scores indisponible (aucune écriture).";
+        resetFill();
+        timer = setInterval(()=>{
+          progress += step;
+          const pct = Math.min(100, (progress/totalHold)*100);
+          fill.style.width = pct+'%';
+          if(progress>=totalHold){
+            clearInterval(timer);
+            timer=null;
+            fill.style.width='100%';
+            forceGameOver();
           }
+        }, step);
+      });
+
+      btnFinish.addEventListener('mouseup',()=>{
+        if(timer){
+          clearInterval(timer);
+          timer=null;
+        }
+        resetFill();
+      });
+      btnFinish.addEventListener('mouseleave',()=>{
+        if(timer){
+          clearInterval(timer);
+          timer=null;
+        }
+        resetFill();
+      });
+
+      async function forceGameOver(){
+        const db = getDb && getDb();
+        if(!db || !state.gameId){
+          diagnosticsPush('Impossible de terminer la partie : DB ou gameId manquant.');
+          return;
+        }
+        const firestore = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+        const { doc, updateDoc } = firestore;
+        const ref = doc(db,"scores_dame_de_pique",state.gameId);
+
+        let winnerId = null;
+        if (state.totals && Object.keys(state.totals).length>0) {
+          let minVal = Infinity;
+          let minKey = null;
+          for(const k of Object.keys(state.totals)){
+            const v = Number(state.totals[k]||0);
+            if(v < minVal){
+              minVal = v;
+              minKey = k;
+            }
+          }
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+          const idx = minKey!=null ? parseInt(minKey,10): -1;
+          if(idx>=0 && ordered[idx]){
+            winnerId = ordered[idx].deviceId || null;
+          }
+        }
+
+        try{
+          await updateDoc(ref,{
+            gameOver:true,
+            winnerId:winnerId || null
+          });
+          state.gameOver=true;
+          state.winnerId=winnerId||null;
+          diagnosticsPush('Fin de partie forcée par l’hôte.');
+          renderAll();
         }catch(e){
-          console.error("[openScoreModal] erreur lors de submitScore:", e);
-          msgEl.textContent = "Erreur lors de l'enregistrement du score.";
+          console.error('[forceGameOver] erreur updateDoc:',e);
+          diagnosticsPush('Erreur lors de la fin de partie. Voir console.');
         }
-        setTimeout(close, 600);
-      };
-
-      // ENTER déclenche « Accepter »
-      inputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          onAccept();
-        }
-      });
-
-      document.getElementById('btnCancelScore')?.addEventListener('click', onCancel, { once:true });
-      document.getElementById('btnAcceptScore')?.addEventListener('click', onAccept, { once:true });
-
-      // Fermer si clic en dehors de la boîte
-      backdrop.addEventListener('click', function onBackdrop(e){
-        if(e.target === backdrop){
-          backdrop.removeEventListener('click', onBackdrop);
-          close();
-        }
-      });
-    }
-
-    function onReady(fn){
-      if(document.readyState==='loading'){
-        document.addEventListener('DOMContentLoaded', fn, {once:true});
-      } else {
-        fn();
       }
     }
 
-    onReady(async ()=>{
-      const { state, boot, ensureAuth } = window.ModInit;
-      const { listenSoiree } = window.ModSoiree;
-      const { listenScores } = window.ModScores;
-      const { renderAll } = window.ModUI;
-
+    document.addEventListener('DOMContentLoaded', async ()=>{
       await boot();
       renderAll();
-      wireOpenScore();
-      wireFinishHold2s();
-      ensureFinishIsLast();
+      setupModal();
+      setupRefresh();
+      setupFinishButton();
 
       const notes=[];
       if(!window.firebaseConfig){
@@ -881,7 +858,9 @@
       }
       notes.push('✅ Auth OK. UID: '+(uid||'(anonyme)'));
 
-      // Écoute soirée
+      const cs=document.getElementById('connStatus');
+      if(cs) cs.textContent='Connecté';
+
       if(!state.soireeCode){
         notes.push('ℹ️ ?code=XXXX manquant → pas d\'écoute soirees.');
         diagnosticsPush(notes);
@@ -902,6 +881,9 @@
           dlName = state.players[state.dealerIndex]?.name || '—';
         }
         document.getElementById('dealerName').textContent = dlName || '—';
+        if (typeof state._updateHostVisibility === 'function') {
+          state._updateHostVisibility();
+        }
         renderAll();
         diagnosticsPush([
           ...notes,
@@ -909,20 +891,18 @@
         ]);
       });
 
-      // Écoute scores (totaux + inputs) si gid présent
       if(state.gameId){
         notes.push('👂 Écoute scores_dame_de_pique/'+state.gameId+' …');
         listenScores(db, state.gameId, ({ totals, round, extra, raw })=>{
           const inputs = window.ModInit.state.currentInputs || {};
           const inputsCount = Object.keys(inputs).length;
 
-          // Même sans totals/round, on veut rafraîchir l'affichage
           if(!totals && !round){
             diagnosticsPush([
               ...notes,
               `ℹ️ Doc scores sans champs totals/round (inputs=${inputsCount}).`
             ]);
-            renderAll();   // relance la validation 25 / grand chelem / fin de partie
+            renderAll();
             return;
           }
 
