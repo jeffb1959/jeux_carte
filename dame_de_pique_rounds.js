@@ -1,32 +1,29 @@
 // dame_de_pique_rounds.js
-// Version v7.5.x — logique de rondes pour Dame de Pique (clé inputs = deviceId)
+// Logique des rondes pour Dame de Pique (clé inputs = deviceId)
 
 import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+// On crée l'objet ModRounds sur window (une seule fois)
+window.ModRounds = window.ModRounds || {};
 
 /**
  * Règle de passe en fonction du numéro de ronde.
  * 1 → À droite, 2 → À gauche, 3 → Au centre, 4 → Garde tes cartes, puis ça recommence.
  */
-function computePassRule(round) {
+window.ModRounds.computePassRule = function (round) {
   const rules = ["À droite", "À gauche", "Au centre", "Garde tes cartes"];
   const n = Number(round);
   if (!Number.isFinite(n) || n <= 0) return "—";
   const idx = (n - 1) % rules.length;
   return rules[idx] || "—";
-}
+};
 
 /**
  * Calcule un résumé de la ronde à partir :
  * - de la liste des joueurs (avec leur deviceId),
  * - des inputs dans Firestore (inputs.<deviceId> = score).
- *
- * Objectif :
- * - reconstruire perRound dans l'ordre des joueurs,
- * - savoir si tout le monde a un score,
- * - vérifier si la somme fait 25,
- * - détecter un éventuel grand chelem (un seul joueur à 25, les autres à 0).
  */
-function computeRoundSummary(players, inputs) {
+window.ModRounds.computeRoundSummary = function (players, inputs) {
   const ordered = (players || []).slice().sort(
     (a, b) => (a?.order ?? 0) - (b?.order ?? 0)
   );
@@ -76,16 +73,16 @@ function computeRoundSummary(players, inputs) {
     sum,
     perRound
   };
-}
+};
 
 /**
  * Applique la ronde lorsqu'elle est complète et valide :
  * - si grand chelem : le joueur à 25 → 0, les autres → 25,
  * - met à jour les totaux cumulés,
- * - enregistre lastRound (perRound, values, sum, etc.),
+ * - enregistre lastRound,
  * - passe à la ronde suivante.
  */
-async function applyRoundScore(db, gid, state, summary) {
+window.ModRounds.applyRoundScore = async function (db, gid, state, summary) {
   if (!db || !gid) throw new Error("applyRoundScore: db ou gid manquant");
 
   const ref = doc(db, "scores_dame_de_pique", gid);
@@ -94,7 +91,6 @@ async function applyRoundScore(db, gid, state, summary) {
     (a, b) => (a?.order ?? 0) - (b?.order ?? 0)
   );
 
-  // On part de perRound, puis on applique éventuellement le grand chelem
   let roundVals = summary.perRound.slice();
 
   if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
@@ -130,13 +126,6 @@ async function applyRoundScore(db, gid, state, summary) {
 
   await updateDoc(ref, payload);
 
-  // On met aussi à jour le state local pour que l'UI soit cohérente
   state.totals = newTotals;
   state.round = roundNumber + 1;
-}
-
-window.ModRounds = {
-  computePassRule,
-  computeRoundSummary,
-  applyRoundScore
 };
