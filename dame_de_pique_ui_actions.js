@@ -42,6 +42,31 @@ function ensureFinishIsLast(){
   }
 }
 
+// ✅ Nouvelle fonction : contrôle de la visibilité du bouton Fin de partie
+function updateFinishVisibility(){
+  const { state } = window.ModInit;
+  const finish = document.getElementById('finishSection');
+  if (!finish) return;
+
+  // Par défaut : on cache le bouton (sécurité)
+  let isHostDevice = false;
+
+  // Liste ordonnée des joueurs (ordre réel des sièges)
+  const ordered = (state.players || []).slice().sort(
+    (a,b) => (a?.order ?? 0) - (b?.order ?? 0)
+  );
+
+  if (ordered.length > 0 && state.deviceId) {
+    const hostPlayer = ordered[0];  // joueur 0 = hôte
+    if (hostPlayer && hostPlayer.deviceId && hostPlayer.deviceId === state.deviceId) {
+      isHostDevice = true;
+    }
+  }
+
+  // Seul l'hôte voit la section Fin de partie
+  finish.style.display = isHostDevice ? '' : 'none';
+}
+
 // Fenêtre modale de saisie de score (synchro Firestore)
 function openScoreModal(){
   const { state } = window.ModInit;
@@ -201,6 +226,10 @@ onReady(async ()=>{
       dlName = state.players[state.dealerIndex]?.name || '—';
     }
     document.getElementById('dealerName').textContent = dlName || '—';
+
+    // ✅ Met à jour la visibilité du bouton Fin de partie pour cet appareil
+    updateFinishVisibility();
+
     renderAll();
     diagnosticsPush([
       ...notes,
