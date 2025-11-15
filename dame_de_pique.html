@@ -93,7 +93,7 @@
       <button id="btnOpenScore" class="btn" type="button" aria-haspopup="dialog" aria-controls="modalScore">
         Inscrire mon pointage
       </button>
-      <div id="totals" class="grid" style="display:grid;gap:10px;margin-top:10px"></div>
+      <!-- <div id="totals" class="grid" style="display:grid;gap:10px;margin-top:10px"></div> -->
       <div id="roundStatus" class="muted" aria-live="polite">0/0 soumis</div>
       <div id="roundError" class="muted" aria-live="assertive"></div>
     </section>
@@ -586,6 +586,11 @@
       const { state } = window.ModInit;
       const host=document.getElementById('totals'); if(!host) return; host.innerHTML='';
 
+        // Si l'élément existe (ancienne UI ou futur besoin), on le remplit,
+        // sinon on saute seulement cette partie visuelle.
+      if (host) {
+        host.innerHTML = '';
+      
       (state.players||[]).forEach((p,idx)=>{
         const line=document.createElement('div'); line.className='line';
         const n=document.createElement('div'); n.textContent=p?.name||`Joueur ${idx+1}`;
