@@ -1,11 +1,77 @@
-<!-- Version v7.5.0 — 2025-11-14 — Zone TEST : séparation CSS / JS (même UI, même logique) -->
+<!-- Version v7.4.1 — 2025-11-14 — Zone TEST : fin de partie (gameOver) gérée dans l'UI -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Dame de Pique — v7.5.0 (zone test)</title>
-  <link rel="stylesheet" href="dame_de_pique.css">
+  <title>Dame de Pique — v7.4.1 (zone test)</title>
+  <style>
+    :root{ --bg:#0b1220; --card:#111a2e; --text:#f5f7fb; --muted:#b9c2d0; --accent:#4fd1c5; --ok:#22c55e; --line:#243252; --danger-pale:#fecaca; --danger-text:#7f1d1d; }
+    *{ box-sizing:border-box } html,body{ height:100% }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); }
+    .wrap{ max-width:420px; margin:0 auto; padding:18px; display:grid; gap:16px }
+    .card{ background:color-mix(in srgb, var(--card) 92%, white 8%); border:1px solid var(--line); border-radius:18px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+    h1{ margin:0 0 4px; font-size:clamp(22px,5vw,28px) }
+    .subhead{ margin:0; font-size:clamp(14px,3.5vw,16px); color:var(--muted) }
+    .muted{ color:var(--muted) }
+    .line{ display:flex; align-items:center; justify-content:space-between; background:#0f1a30; border:1px solid #243252; border-radius:12px; padding:10px 12px; }
+    .badge{ display:inline-block; margin-left:10px; padding:4px 8px; border-radius:999px; font-size:.85rem; font-weight:700; background:#fecaca; color:#7f1d1d; vertical-align:middle }
+    .btn{ appearance:none; border:none; cursor:pointer; width:65%; min-height:54px; padding:14px; border-radius:14px; font-size:1.2rem; font-weight:800; color:#0c111b; background:#22c55e; display:block; margin:0 auto; transition:opacity .2s ease, transform .02s ease-in-out; will-change: transform; text-align:center; }
+    .btn:active{ transform:translateY(1px) } .btn[disabled]{ opacity:.55; cursor:not-allowed }
+    .btn-pale-danger{ color:var(--danger-text); background:var(--danger-pale); font-size:.9rem; padding:8px 14px; min-height:36px; }
+    .hold2s{ position:relative; overflow:hidden } .hold2s .fill{ position:absolute; inset:0; width:0%; background:rgba(0,0,0,.08); pointer-events:none; transition:width 2s linear }
+    .footer{ text-align:center; color:var(--muted); font-size:.95rem }
+    @media (min-width:640px){ .wrap{ max-width:520px } }
+
+    /* Fenêtre modale de saisie de score */
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.78);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:50;
+    }
+    .modal{
+      width:min(520px, 92vw);
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 18px 40px rgba(0,0,0,.6);
+    }
+    .modal h3{ margin:0 0 6px; font-size:1.15rem; }
+    .modal .list-line{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:6px 0;
+      font-size:.95rem;
+    }
+    .modal input[type=number]{
+      width:90px;
+      padding:8px;
+      border-radius:10px;
+      border:1px solid #35476d;
+      background:#0f1a30;
+      color:var(--text);
+    }
+    .modal .toolbar{
+      display:flex;
+      gap:8px;
+      justify-content:flex-end;
+      margin-top:12px;
+    }
+    .btn-secondary{
+      background:#334155;
+      color:#e5e7eb;
+    }
+    .modal .msg{
+      margin-top:6px;
+      font-size:.9rem;
+    }
+  </style>
 </head>
 <body>
   <main class="wrap">
@@ -18,91 +84,856 @@
     </header>
 
     <section class="card" aria-labelledby="playersTitle">
-      <h2 id="playersTitle" class="subhead">Joueurs et totaux</h2>
-      <div id="playersList"></div>
-      <div id="grandChelemBanner" class="badge" style="display:none">Grand chelem détecté sur la dernière ronde</div>
+      <h2 id="playersTitle" style="margin:0 0 8px;font-size:1.2rem">Joueurs</h2>
+      <div id="playersList" class="grid" style="display:grid;gap:10px"></div>
     </section>
 
     <section class="card" aria-labelledby="scoresTitle">
-      <h2 id="scoresTitle" class="subhead">Scores de la ronde en cours</h2>
-      <p class="muted">
-        Ronde <span id="round2">1</span> • Somme des scores attendue : <strong>25 points</strong>.
-      </p>
-      <div id="roundStatus" class="line">
-        <span>Scores soumis :</span>
-        <strong id="roundStatusValue">0/0</strong>
+      <h2 id="scoresTitle" style="margin:0 0 8px;font-size:1.2rem">Scores</h2>
+      <button id="btnOpenScore" class="btn" type="button" aria-haspopup="dialog" aria-controls="modalScore">
+        Inscrire mon pointage
+      </button>
+      <div id="totals" class="grid" style="display:grid;gap:10px;margin-top:10px"></div>
+      <div id="roundStatus" class="muted" aria-live="polite">0/0 soumis</div>
+      <div id="roundError" class="muted" aria-live="assertive"></div>
+    </section>
+
+    <!-- Fenêtre modale de saisie de score (même pour tous les joueurs) -->
+    <div id="modalScoreBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalScoreTitle">
+      <div class="modal">
+        <h3 id="modalScoreTitle">Saisie du pointage — Ronde <span id="modalRound">1</span></h3>
+        <div class="muted" id="modalInfo">
+          Chaque joueur ouvre cette fenêtre depuis le bouton « Inscrire mon pointage ».
+        </div>
+
+        <div id="modalPlayers" style="margin-top:8px;"></div>
+
+        <div style="margin-top:10px;">
+          Mon score pour cette ronde :
+          <input id="myScoreInput" type="number" min="0" max="25" step="1" value="0" />
+        </div>
+
+        <div id="modalMsg" class="msg muted"></div>
+
+        <div class="toolbar">
+          <button id="btnCancelScore" class="btn btn-secondary" type="button">Annuler</button>
+          <button id="btnAcceptScore" class="btn" type="button">Accepter</button>
+        </div>
       </div>
-      <div id="roundError" class="line" style="display:none"></div>
-      <button id="btnOpenScore" class="btn" type="button">Inscrire mon pointage</button>
+    </div>
+
+    <details class="card" id="diag" style="font-size:.95rem">
+      <summary>Diagnostics</summary>
+      <pre id="diagOutput" style="white-space:pre-wrap"></pre>
+    </details>
+
+    <section class="card" id="finishSection">
+      <button id="btnFinish" class="btn btn-pale-danger hold2s" type="button" aria-label="Fin de partie (maintenir 2 secondes)">
+        <span>Fin de partie (maintenir)</span>
+        <div class="fill" aria-hidden="true"></div>
+      </button>
     </section>
 
-    <section class="card" aria-labelledby="controlsTitle">
-      <h2 id="controlsTitle" class="subhead">Contrôles de la partie</h2>
-      <p class="muted" id="leaderInfo">Vous n’êtes pas l’hôte de la partie.</p>
-      <div class="line">
-        <button id="btnFinish" class="btn btn-pale-danger hold2s" type="button" style="display:none">
-          <span class="fill"></span>
-          <span class="label">Fin de la partie (maintenir 2 secondes)</span>
-        </button>
-        <button id="btnReload" class="btn" type="button">Rafraîchir l’écran</button>
-      </div>
-    </section>
-
-    <section class="card" aria-labelledby="diagTitle">
-      <h2 id="diagTitle" class="subhead">Diagnostics (debug)</h2>
-      <pre id="diagOutput" style="white-space:pre-wrap;font-size:.8rem;max-height:200px;overflow:auto"></pre>
-    </section>
-
-    <div class="footer">v7.5.0 — zone test (totaux + ronde + fin de partie gameOver)</div>
+    <div class="footer">v7.4.1 — zone test (totaux + ronde + fin de partie gameOver)</div>
   </main>
 
-  <!-- Fenêtre modale score -->
-  <dialog id="scoreDialog">
-    <form method="dialog" id="scoreForm" class="modal">
-      <header class="modal-header">
-        <h2 class="modal-title">Inscrire mon pointage</h2>
-      </header>
-      <section class="modal-body">
-        <p class="muted">
-          Joueur : <strong id="currentPlayerName">—</strong><br>
-          Ronde : <strong id="currentRoundLabel">1</strong>
-        </p>
-        <label class="modal-label" for="scoreInput">
-          Votre score (0 à 25) — la somme de tous les joueurs doit être 25
-        </label>
-        <input id="scoreInput" name="score" type="number" min="0" max="25" step="1" inputmode="numeric" />
-        <p id="modalError" class="modal-error" style="display:none"></p>
-        <p id="modalInfo" class="modal-info">
-          Si un joueur fait un <strong>grand chelem (25)</strong>, le système ajustera automatiquement les totaux
-          (0 pour lui, 25 pour les autres).
-        </p>
-      </section>
-      <footer class="modal-footer">
-        <button type="submit" class="btn">Enregistrer le score</button>
-        <button type="button" id="btnCancelModal" class="btn">Annuler</button>
-      </footer>
-    </form>
-  </dialog>
-
   <!-- Config Firebase -->
-  <script src="dame_de_pique_config.js"></script>
+  <script>
+    window.firebaseConfig = {
+      apiKey: "AIzaSyDLSnoOCdHXl-5sKaJ55hhFbv-quS156kg",
+      authDomain: "soireecartev2.firebaseapp.com",
+      projectId: "soireecartev2",
+      storageBucket: "soireecartev2.firebasestorage.app",
+      messagingSenderId: "784781686361",
+      appId: "1:784781686361:web:033693cb22fb1a55af2348"
+    };
+  </script>
 
   <!-- === init/app === -->
-  <script type="module" src="dame_de_pique_init.js"></script>
+  <script type="module">
+    const $ = (id)=>document.getElementById(id);
+
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+    const state = {
+      soireeCode: "",
+      gameId: "",
+      players: [],
+      dealerIndex: 0,
+      round: 1,
+      totals: {},
+      roundScores: {},
+      isHost: false,
+      gameOver: false,
+      lastRound: null,
+      lastRoundPer: null,
+      authUid: null,
+      deviceId: null,
+      currentInputs: {},
+      scoresRaw: null,
+      winnerId: null,   // suivi du gagnant éventuel
+      _db: null
+    };
+
+    function readUrl(){
+      const qs = new URLSearchParams(location.search);
+      state.soireeCode = String(qs.get("code")||"").replace(/\D/g,"").slice(0,4);
+      state.gameId     = String(qs.get("gid")||"");
+      if(state.soireeCode) $("code").textContent = state.soireeCode;
+    }
+
+    // Résolution du deviceId au démarrage (URL ?did=... ou localStorage)
+    function resolveDeviceIdAtBoot() {
+      try {
+        const qs = new URLSearchParams(location.search);
+        const fromUrl = qs.get("did");
+        if (fromUrl) {
+          state.deviceId = fromUrl;
+          try { localStorage.setItem("deviceId", fromUrl); } catch(_) {}
+          return;
+        }
+
+        const stored =
+          localStorage.getItem("deviceId") ||
+          localStorage.getItem("dame_de_pique_deviceId");
+
+        if (stored) {
+          state.deviceId = stored;
+          return;
+        }
+
+        console.warn("[boot] Aucun deviceId trouvé dans l'URL ni le localStorage.");
+      } catch (e) {
+        console.warn("[boot] Erreur lors de la résolution du deviceId :", e);
+      }
+    }
+
+    function bootUi(){
+      $("round").textContent = String(state.round);
+      $("dealerName").textContent = "—";
+    }
+
+    async function ensureAuth(){
+      if(!window.firebaseConfig){
+        console.warn("[ensureAuth] firebaseConfig manquant — lecture désactivée.");
+        return null;
+      }
+      const app = getApps().length ? getApps()[0] : initializeApp(window.firebaseConfig);
+      const auth = getAuth(app);
+      const db   = getFirestore(app);
+      state._db  = db;
+      try{
+        await signInAnonymously(auth);
+      }catch(e){
+        if(!auth.currentUser) throw e;
+      }
+      return new Promise((resolve)=>
+        onAuthStateChanged(auth, (user)=>{
+          state.authUid = user?.uid || null;
+          resolve({ app, auth, db, uid: state.authUid });
+        })
+      );
+    }
+
+    function getDb(){ return state._db; }
+
+    async function boot(){
+      readUrl();
+      resolveDeviceIdAtBoot();
+      bootUi();
+    }
+
+    window.ModInit = { state, boot, ensureAuth, getDb };
+  </script>
 
   <!-- === data/soiree === -->
-  <script type="module" src="dame_de_pique_soiree.js"></script>
+  <script type="module">
+    import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    let unsubscribeSoiree=null;
+    function listenSoiree(db, code, onData){
+      if(!db||!code){ console.warn("[listenSoiree] db/code manquant"); return ()=>{}; }
+      if(unsubscribeSoiree){ try{unsubscribeSoiree();}catch(_){} unsubscribeSoiree=null; }
+      const ref = doc(db,"soirees",code);
+      unsubscribeSoiree = onSnapshot(
+        ref,
+        (snap)=>{
+          if(!snap.exists()){ onData?.(null); return; }
+          onData?.(snap.data()||{});
+        },
+        (err)=> console.error("[listenSoiree] erreur snapshot:",err)
+      );
+      return ()=>{ if(unsubscribeSoiree) unsubscribeSoiree(); };
+    }
+    window.ModSoiree = { listenSoiree };
+  </script>
 
   <!-- === data/scores === (adaptatif) -->
-  <script type="module" src="dame_de_pique_scores.js"></script>
+  <script type="module">
+    import { doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    let unsubscribeScores=null;
+
+    function extractTotals(data){
+      // 1) totals direct (objet)
+      if (data && typeof data.totals === 'object' && !Array.isArray(data.totals)) {
+        const t = data.totals;
+        const keys = Object.keys(t);
+        const looksLikePN = keys.length && keys.every(k => /^p\d+$/i.test(k));
+        if (looksLikePN) {
+          const out = {};
+          for (const k of keys) {
+            const n = parseInt(k.slice(1), 10);
+            const idx = Number.isFinite(n) ? n-1 : null;
+            if (idx != null && idx >= 0) out[String(idx)] = Number(t[k]) || 0;
+          }
+          return out;
+        }
+        return t;
+      }
+
+      // 2) standings.totals (si jamais utilisé plus tard)
+      if (data && data.standings && typeof data.standings.totals === 'object') {
+        return data.standings.totals;
+      }
+
+      // 3) standings objet simple
+      if (data && data.standings && typeof data.standings === 'object' && !Array.isArray(data.standings)) {
+        return data.standings;
+      }
+
+      // 4) lastRound.perRound comme fallback (dernier tour uniquement)
+      if (data && data.lastRound && Array.isArray(data.lastRound.perRound)) {
+        const o = {}; data.lastRound.perRound.forEach((v,i)=> o[String(i)] = Number(v)||0);
+        return o;
+      }
+
+      return null;
+    }
+
+    function extractRound(data){
+      if (data && Number.isInteger(data.round)) return data.round;
+      if (data && data.roundState && Number.isInteger(data.roundState.round)) return data.roundState.round;
+      if (data && data.lastRound && Number.isInteger(data.lastRound.round)) return data.lastRound.round;
+      return null;
+    }
+
+    function listenScores(db, gid, onData){
+      if(!db||!gid){ console.warn("[listenScores] db/gid manquant"); return ()=>{}; }
+      if(unsubscribeScores){ try{unsubscribeScores();}catch(_){} unsubscribeScores=null; }
+      const ref = doc(db, "scores_dame_de_pique", gid);
+      unsubscribeScores = onSnapshot(
+        ref,
+        (snap)=>{
+          if(!snap.exists()){ onData?.(null); return; }
+          const raw = snap.data()||{};
+          const inputs = (raw.inputs && typeof raw.inputs === "object" && !Array.isArray(raw.inputs))
+            ? raw.inputs
+            : {};
+          try{
+            if (window.ModInit && window.ModInit.state) {
+              window.ModInit.state.currentInputs = inputs;
+              window.ModInit.state.scoresRaw = raw;
+              window.ModInit.state.gameOver = !!raw.gameOver;
+              window.ModInit.state.winnerId = raw.winnerId || null;
+            }
+          }catch(_){}
+
+          const totals = extractTotals(raw);
+          const round  = extractRound(raw);
+          const extra  = { lastRoundPer: (raw.lastRound && Array.isArray(raw.lastRound.perRound)) ? raw.lastRound.perRound : null };
+          onData?.({ totals, round, extra, raw });
+        },
+        (err)=> console.error("[listenScores] erreur snapshot:", err)
+      );
+      return ()=>{ if(unsubscribeScores) unsubscribeScores(); };
+    }
+
+    async function submitScoreForCurrentDevice(score){
+      const mod = window.ModInit || {};
+      const state = mod.state || {};
+      const getDb = mod.getDb;
+      if (!getDb) {
+        console.warn("[submitScore] getDb absent");
+        return;
+      }
+      const db = getDb();
+      if (!db) {
+        console.warn("[submitScore] DB indisponible");
+        return;
+      }
+      if (!state.gameId) {
+        console.warn("[submitScore] gameId manquant");
+        return;
+      }
+      if (!state.deviceId) {
+        console.warn("[submitScore] deviceId non initialisé (vérifier resolveDeviceIdAtBoot).");
+        return;
+      }
+      const s = Number(score);
+      if (!Number.isFinite(s)) {
+        console.warn("[submitScore] score invalide");
+        return;
+      }
+
+      const ref = doc(db, "scores_dame_de_pique", state.gameId);
+      try{
+        await updateDoc(ref, { ["inputs."+state.deviceId]: s });
+      }catch(e){
+        console.error("[submitScore] erreur updateDoc:", e);
+      }
+    }
+
+    window.ModScores = { listenScores, submitScoreForCurrentDevice };
+  </script>
 
   <!-- === logic/rounds === -->
-  <script type="module" src="dame_de_pique_rounds.js"></script>
+  <script type="module">
+    import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+    function computePassRule(round){
+      const rules=['À droite','À gauche','Au centre','Garde tes cartes'];
+      return rules[(Math.max(1,round)-1)%4];
+    }
+
+    // Calcule un résumé de ronde à partir des inputs Firestore (local, sans écriture)
+    function computeRoundSummary(players, inputs){
+      const ordered = (players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      const perRound = [];
+      let sum = 0;
+      let filledCount = 0;
+
+      ordered.forEach((p, idx) => {
+        const did = p && p.deviceId;
+        let v = null;
+        if (did && inputs && Object.prototype.hasOwnProperty.call(inputs, did)) {
+          v = Number(inputs[did]);
+          if (!Number.isFinite(v)) v = 0;
+          filledCount++;
+        }
+        perRound[idx] = v;
+        if (v != null) sum += v;
+      });
+
+      const expected = ordered.length;
+      const isComplete = expected > 0 && filledCount === expected;
+      const isValid25 = isComplete && sum === 25;
+
+      // Grand Chelem : un seul joueur à 25, tous les autres à 0
+      let grandIndex = -1;
+      let isGrand = false;
+      if (isComplete && isValid25) {
+        const nonZero = [];
+        perRound.forEach((v,i)=>{
+          if (v && v > 0) nonZero.push({v,i});
+        });
+        if (nonZero.length === 1 && nonZero[0].v === 25) {
+          isGrand = true;
+          grandIndex = nonZero[0].i;
+        }
+      }
+
+      return {
+        perRound,
+        sum,
+        isComplete,
+        isValid25,
+        isGrandChelem: isGrand,
+        grandChelemIndex: grandIndex
+      };
+    }
+
+    // Écrit la ronde et les totaux dans Firestore quand la somme vaut 25
+    async function applyRoundScore(summary){
+      const mod = window.ModInit || {};
+      const state = mod.state || {};
+      const getDb = mod.getDb;
+
+      if (!getDb) {
+        console.warn('[applyRoundScore] getDb absent');
+        return;
+      }
+      const db = getDb();
+      if (!db) {
+        console.warn('[applyRoundScore] DB indisponible');
+        return;
+      }
+      if (!state.gameId) {
+        console.warn('[applyRoundScore] gameId manquant');
+        return;
+      }
+
+      // 🔒 Si la partie est déjà terminée, on ne touche plus aux scores
+      if (state.scoresRaw && state.scoresRaw.gameOver === true) {
+        console.warn('[applyRoundScore] Partie déjà terminée (gameOver=true). Aucune nouvelle ronde appliquée.');
+        return;
+      }
+
+      if (!summary || !summary.isComplete || !summary.isValid25) {
+        return; // rien à faire si la ronde n'est pas complète ou invalide
+      }
+
+      const playersOrdered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+      const n = playersOrdered.length;
+      if (!n) return;
+
+      // Totaux de base (normalisés "0","1",...)
+      const baseTotals = [];
+      for (let i=0;i<n;i++){
+        const key = String(i);
+        baseTotals[i] = Number(state.totals?.[key] || 0);
+      }
+
+      // Points de la ronde (après éventuel Grand Chelem)
+      let roundVals = summary.perRound.slice();
+      if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
+        roundVals = roundVals.map((v,idx)=> idx===summary.grandChelemIndex ? 0 : 25);
+      }
+
+      const newTotalsArr = baseTotals.map((t,i)=> t + (Number(roundVals[i])||0));
+
+      // Détermination de fin de partie
+      let gameOver = false;
+      let winnerId = null;
+      let maxTotal = -Infinity;
+      newTotalsArr.forEach(v => { if (v>maxTotal) maxTotal = v; });
+      if (Number.isFinite(maxTotal) && maxTotal >= 100) {
+        gameOver = true;
+        let minTotal = Infinity;
+        let winIndex = -1;
+        newTotalsArr.forEach((v,i)=>{
+          if (v < minTotal) {
+            minTotal = v;
+            winIndex = i;
+          }
+        });
+        if (winIndex >= 0 && playersOrdered[winIndex] && playersOrdered[winIndex].deviceId) {
+          winnerId = playersOrdered[winIndex].deviceId;
+        }
+      }
+
+      // Map "p1","p2",... pour compatibilité avec ton schema existant
+      const totalsMap = {};
+      newTotalsArr.forEach((v,i)=>{
+        totalsMap['p'+(i+1)] = v;
+      });
+
+      const roundNumber = state.round || 1;
+
+      const ref = doc(db, 'scores_dame_de_pique', state.gameId);
+      const payload = {
+        lastRound: {
+          appliedGrandChelem: !!summary.isGrandChelem,
+          controleIndex: -1,
+          perRound: roundVals,
+          round: roundNumber,
+          sum: roundVals.reduce((a,b)=> a + (Number(b)||0), 0),
+          values: roundVals
+        },
+        totals: totalsMap,
+        round: roundNumber + 1,
+        gameOver: gameOver,
+        winnerId: gameOver ? (winnerId || null) : null,
+        roundError: "",
+        // on vide les inputs pour forcer une nouvelle saisie à la ronde suivante
+        inputs: {}
+      };
+
+      try{
+        await updateDoc(ref, payload);
+        console.debug('[applyRoundScore] Ronde appliquée et totaux mis à jour.');
+      }catch(e){
+        console.error('[applyRoundScore] erreur updateDoc:', e);
+      }
+    }
+
+    function checkGameOver(){ return false; } // pas utilisé directement ici
+
+    window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver };
+  </script>
 
   <!-- === ui/render === -->
-  <script type="module" src="dame_de_pique_render.js"></script>
+  <script type="module">
+    const $=(id)=>document.getElementById(id);
+
+    function renderPlayers(){
+      const { state } = window.ModInit;
+      const { computePassRule } = window.ModRounds;
+      const host=$('playersList'); if(!host) return; host.innerHTML='';
+      (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,idx)=>{
+        const row=document.createElement('div'); row.className='line';
+        const name=document.createElement('div'); name.textContent=p?.name||`Joueur ${idx+1}`;
+        if(idx===state.dealerIndex){
+          const badge=document.createElement('span'); badge.className='badge'; badge.textContent='Brasseur'; name.appendChild(badge);
+        }
+        const val=document.createElement('div'); val.className='muted';
+        const key = (p.id!=null)? String(p.id): String(idx);
+        const total = Number.isFinite(window.ModInit.state.totals?.[key]) ? window.ModInit.state.totals[key] : 0;
+        val.textContent=`Total: ${total}`;
+        row.appendChild(name); row.appendChild(val); host.appendChild(row);
+      });
+      const pass=computePassRule(window.ModInit.state.round);
+      const dealerName=(window.ModInit.state.players?.[window.ModInit.state.dealerIndex]?.name)||'—';
+      $('dealerName').textContent=dealerName; $('round').textContent=String(window.ModInit.state.round);
+      const meta=document.getElementById('meta');
+      if(meta){
+        meta.innerHTML=`Code soirée: <strong id="code">${window.ModInit.state.soireeCode||'—'}</strong> • Tour <span id="round">${window.ModInit.state.round}</span> • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
+      }
+      const passEl=document.getElementById('passRule'); if(passEl) passEl.textContent=`Règle : ${pass}`;
+    }
+
+    function renderTotals(){
+      const { state } = window.ModInit;
+      const host=document.getElementById('totals'); if(!host) return; host.innerHTML='';
+
+      (state.players||[]).forEach((p,idx)=>{
+        const line=document.createElement('div'); line.className='line';
+        const n=document.createElement('div'); n.textContent=p?.name||`Joueur ${idx+1}`;
+        const v=document.createElement('div');
+        const key = (p.id!=null)? String(p.id): String(idx);
+        const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
+        v.textContent=String(total);
+        line.appendChild(n); line.appendChild(v); host.appendChild(line);
+      });
+
+      // Statut de la ronde basé sur les inputs Firestore
+      const inputs = state.currentInputs || {};
+      const submitted = Object.keys(inputs).length;
+      const expected = (state.players||[]).length;
+      const rs = document.getElementById('roundStatus');
+      if (rs) rs.textContent = `${submitted}/${expected} soumis`;
+
+      const re = document.getElementById('roundError');
+      if (re) {
+        const { computeRoundSummary, applyRoundScore } = window.ModRounds;
+
+        // 🔚 Cas 1 : partie déjà terminée
+        if (state.gameOver) {
+          if (rs) rs.textContent = "Partie terminée.";
+
+          // Désactiver le bouton "Inscrire mon pointage"
+          const btn = document.getElementById('btnOpenScore');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Partie terminée";
+          }
+
+          // Chercher le gagnant (si winnerId connu)
+          let winnerName = "—";
+          let winnerTotal = null;
+
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+
+          if (state.winnerId) {
+            const idx = ordered.findIndex(p => p && p.deviceId === state.winnerId);
+            if (idx >= 0) {
+              winnerName = ordered[idx].name || `Joueur ${idx+1}`;
+              const key = String(idx);
+              winnerTotal = Number(state.totals?.[key] || 0);
+            }
+          }
+
+          // Si winnerId manquant, on essaie de déterminer le plus petit total
+          if (winnerName === "—") {
+            let minTotal = Infinity;
+            let minIdx = -1;
+            Object.keys(state.totals || {}).forEach(k=>{
+              const v = Number(state.totals[k] || 0);
+              if (v < minTotal) {
+                minTotal = v;
+                minIdx = parseInt(k,10);
+              }
+            });
+            if (minIdx >= 0 && ordered[minIdx]) {
+              winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
+              winnerTotal = minTotal;
+            }
+          }
+
+          if (winnerTotal != null) {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName} avec ${winnerTotal} points.`;
+          } else {
+            re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
+          }
+
+          // On ne fait plus de validation de ronde ni d'appel à applyRoundScore
+          return;
+        }
+
+        // 🔁 Cas 2 : partie en cours → logique de validation de ronde
+        const summary = computeRoundSummary(state.players, inputs);
+
+        if (!summary.isComplete) {
+          re.textContent = "";
+        } else if (!summary.isValid25) {
+          re.textContent = `Erreur: la somme des scores est ${summary.sum}, elle doit être exactement 25.`;
+        } else if (summary.isGrandChelem) {
+          const ordered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+          const winnerPlayer = ordered[summary.grandChelemIndex];
+          const nm = winnerPlayer?.name || `Joueur ${summary.grandChelemIndex+1}`;
+          re.textContent = `Grand chelem détecté pour ${nm} (25). Les totaux seront ajustés (0 pour ${nm}, 25 pour les autres).`;
+          applyRoundScore(summary);
+        } else {
+          re.textContent = `OK : tous les scores sont saisis et la somme est 25. Les totaux sont mis à jour pour la prochaine ronde.`;
+          applyRoundScore(summary);
+        }
+      }
+    }
+
+    function renderAll(){
+      renderPlayers();
+      renderTotals();
+      const { state } = window.ModInit;
+      document.body.style.background = (state.myIndex===state.dealerIndex)?'#0f2e16':'var(--bg)';
+    }
+
+    window.ModUI = { renderPlayers, renderTotals, renderAll };
+  </script>
 
   <!-- === actions/ui === -->
-  <script type="module" src="dame_de_pique_actions.js"></script>
+  <script type="module">
+    const $=(id)=>document.getElementById(id);
+
+    function diagnosticsPush(lines){
+      const d=document.getElementById('diagOutput');
+      if(d) d.textContent=lines.join('\n');
+    }
+
+    function wireOpenScore(){
+      const btn=$('btnOpenScore'); if(!btn||btn.__wired) return; btn.__wired=true;
+      btn.addEventListener('click',(e)=>{ e.preventDefault(); openScoreModal(); },{capture:true});
+    }
+
+    function wireFinishHold2s(){
+      const btn=$('btnFinish'); if(!btn||btn.__wired) return; btn.__wired=true; let timer=null; const fill=btn.querySelector('.fill');
+      const start=(ev)=>{
+        ev.preventDefault?.();
+        if(fill){
+          fill.style.transition='none';
+          fill.style.width='0%';
+          void fill.offsetWidth;
+          fill.style.transition='width 2s linear';
+          fill.style.width='100%';
+        }
+        timer=setTimeout(()=>{
+          clearTimeout(timer); timer=null;
+          alert('Fin de partie (placeholder) — écriture Firestore v7.6.0');
+        },2000);
+      };
+      const cancel=()=>{
+        clearTimeout(timer); timer=null;
+        if(fill){ fill.style.transition='none'; fill.style.width='0%'; }
+      };
+      ['mousedown','touchstart'].forEach(ev=> btn.addEventListener(ev,start,{passive:false}));
+      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> btn.addEventListener(ev,cancel));
+    }
+
+    function ensureFinishIsLast(){
+      const main=document.querySelector('main.wrap');
+      const finish=document.getElementById('finishSection');
+      if(main&&finish&&main.lastElementChild!==finish){
+        main.appendChild(finish);
+      }
+    }
+
+    // Fenêtre modale de saisie de score (synchro Firestore)
+    function openScoreModal(){
+      const { state } = window.ModInit;
+
+      // Si la partie est terminée, on ne permet plus la saisie
+      if (state.gameOver) {
+        alert("La partie est terminée. Il n'est plus possible de saisir des points.");
+        return;
+      }
+
+      const backdrop = document.getElementById('modalScoreBackdrop');
+      const listEl   = document.getElementById('modalPlayers');
+      const roundEl  = document.getElementById('modalRound');
+      const inputEl  = document.getElementById('myScoreInput');
+      const msgEl    = document.getElementById('modalMsg');
+
+      if(!backdrop || !listEl || !roundEl || !inputEl || !msgEl){
+        console.warn('[openScoreModal] éléments manquants dans le DOM.');
+        return;
+      }
+
+      msgEl.textContent = '';
+      roundEl.textContent = String(state.round || 1);
+
+      const players = state.players || [];
+      const inputs = state.currentInputs || {};
+
+      // Liste des joueurs avec leur score de ronde courant
+      listEl.innerHTML = '';
+      players.forEach((p, idx) => {
+        const line = document.createElement('div');
+        line.className = 'list-line';
+        const left = document.createElement('div');
+        left.textContent = (p && p.name) ? p.name : `Joueur ${idx+1}`;
+        const right = document.createElement('div');
+        const did = p && p.deviceId;
+        const v = (did && Object.prototype.hasOwnProperty.call(inputs, did)) ? inputs[did] : null;
+        right.textContent = (v != null) ? `${v} pts` : '—';
+        line.appendChild(left);
+        line.appendChild(right);
+        listEl.appendChild(line);
+      });
+
+      // Pré-remplir mon score si déjà saisi
+      let myVal = "";
+      if (state.deviceId && inputs && Object.prototype.hasOwnProperty.call(inputs, state.deviceId)) {
+        myVal = String(inputs[state.deviceId]);
+      }
+      inputEl.value = myVal;
+      inputEl.focus();
+      backdrop.style.display = 'flex';
+
+      const close = () => {
+        backdrop.style.display = 'none';
+        msgEl.textContent = '';
+      };
+
+      const onCancel = () => {
+        close();
+      };
+
+      const onAccept = async () => {
+        const raw = inputEl.value.trim();
+        const val = Number(raw);
+        if (!Number.isFinite(val) || val < 0 || val > 25) {
+          msgEl.textContent = "Le score doit être un nombre entre 0 et 25.";
+          return;
+        }
+        msgEl.textContent = "Enregistrement...";
+        try{
+          if (window.ModScores && window.ModScores.submitScoreForCurrentDevice) {
+            await window.ModScores.submitScoreForCurrentDevice(val);
+            msgEl.textContent = "Score envoyé.";
+          }else{
+            msgEl.textContent = "Module scores indisponible (aucune écriture).";
+          }
+        }catch(e){
+          console.error("[openScoreModal] erreur lors de submitScore:", e);
+          msgEl.textContent = "Erreur lors de l'enregistrement du score.";
+        }
+        setTimeout(close, 600);
+      };
+
+      // ENTER déclenche « Accepter »
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          onAccept();
+        }
+      });
+
+      document.getElementById('btnCancelScore')?.addEventListener('click', onCancel, { once:true });
+      document.getElementById('btnAcceptScore')?.addEventListener('click', onAccept, { once:true });
+
+      // Fermer si clic en dehors de la boîte
+      backdrop.addEventListener('click', function onBackdrop(e){
+        if(e.target === backdrop){
+          backdrop.removeEventListener('click', onBackdrop);
+          close();
+        }
+      });
+    }
+
+    function onReady(fn){
+      if(document.readyState==='loading'){
+        document.addEventListener('DOMContentLoaded', fn, {once:true});
+      } else {
+        fn();
+      }
+    }
+
+    onReady(async ()=>{
+      const { state, boot, ensureAuth } = window.ModInit;
+      const { listenSoiree } = window.ModSoiree;
+      const { listenScores } = window.ModScores;
+      const { renderAll } = window.ModUI;
+
+      await boot();
+      renderAll();
+      wireOpenScore();
+      wireFinishHold2s();
+      ensureFinishIsLast();
+
+      const notes=[];
+      if(!window.firebaseConfig){
+        notes.push('ℹ️ firebaseConfig manquant → lecture désactivée.');
+        diagnosticsPush(notes);
+        return;
+      }
+      notes.push('⏳ Auth anonyme…');
+      const ctx = await ensureAuth();
+      const db=ctx?.db, uid=ctx?.uid;
+      if(!db){
+        notes.push('❌ Auth/DB indisponible.');
+        diagnosticsPush(notes);
+        return;
+      }
+      notes.push('✅ Auth OK. UID: '+(uid||'(anonyme)'));
+
+      // Écoute soirée
+      if(!state.soireeCode){
+        notes.push('ℹ️ ?code=XXXX manquant → pas d\'écoute soirees.');
+        diagnosticsPush(notes);
+        return;
+      }
+      notes.push('👂 Écoute soirees/'+state.soireeCode+' …');
+      listenSoiree(db, state.soireeCode, (data)=>{
+        if(!data){
+          notes.push('⚠️ Doc soirees inexistant');
+          diagnosticsPush(notes);
+          return;
+        }
+        state.players = Array.isArray(data.players)? data.players : (data.players?.list||[]);
+        state.dealerIndex = Number.isInteger(data.leaderIndex)? data.leaderIndex : (data.dealerIndex ?? 0);
+        if(Number.isInteger(data.round)) state.round = data.round;
+        let dlName = data.leaderName;
+        if(!dlName && Array.isArray(state.players) && state.players[state.dealerIndex]){
+          dlName = state.players[state.dealerIndex]?.name || '—';
+        }
+        document.getElementById('dealerName').textContent = dlName || '—';
+        renderAll();
+        diagnosticsPush([
+          ...notes,
+          '📦 Maj soirees: players='+(state.players?.length||0)+', dealerIndex='+state.dealerIndex+', round='+state.round
+        ]);
+      });
+
+      // Écoute scores (totaux + inputs) si gid présent
+      if(state.gameId){
+        notes.push('👂 Écoute scores_dame_de_pique/'+state.gameId+' …');
+        listenScores(db, state.gameId, ({ totals, round, extra, raw })=>{
+          const inputs = window.ModInit.state.currentInputs || {};
+          const inputsCount = Object.keys(inputs).length;
+
+          // Même sans totals/round, on veut rafraîchir l'affichage
+          if(!totals && !round){
+            diagnosticsPush([
+              ...notes,
+              `ℹ️ Doc scores sans champs totals/round (inputs=${inputsCount}).`
+            ]);
+            renderAll();   // relance la validation 25 / grand chelem / fin de partie
+            return;
+          }
+
+          if(totals) state.totals = totals;
+          if(Number.isInteger(round)) state.round = round;
+          if(extra && Array.isArray(extra.lastRoundPer)) state.lastRoundPer = extra.lastRoundPer;
+
+          renderAll();
+          diagnosticsPush([
+            ...notes,
+            '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round+`, inputs=${inputsCount}, gameOver=${state.gameOver}`
+          ]);
+        });
+      } else {
+        notes.push('ℹ️ ?gid=... manquant → pas d\'écoute scores.');
+        diagnosticsPush(notes);
+      }
+    });
+  </script>
 </body>
 </html>
