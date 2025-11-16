@@ -302,10 +302,22 @@ onReady(async ()=>{
         ...notes,
         '📦 Maj scores: totals='+(Object.keys(state.totals||{}).length)+', round='+state.round+`, inputs=${inputsCount}, gameOver=${state.gameOver}`
       ]);
+
+      // 🔁 Redirection automatique des autres joueurs quand la partie est terminée
+      if (state.gameOver === true) {
+        const isHost = !!state.isHost;
+        if (!isHost) {
+          const code = state.soireeCode ? String(state.soireeCode) : "";
+          if (code) {
+            window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
+          } else {
+            window.location.href = 'selection_jeux.html';
+          }
+        }
+      }
     });
   } else {
     notes.push('ℹ️ ?gid=... manquant → pas d\'écoute scores.');
     diagnosticsPush(notes);
   }
 });
-
