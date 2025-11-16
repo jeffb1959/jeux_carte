@@ -21,6 +21,7 @@ function computeRoundSummary(players, inputs){
       filledCount++;
     }
     perRound[idx] = v;
+
     if (v != null) sum += v;
   });
 
@@ -45,6 +46,8 @@ function computeRoundSummary(players, inputs){
   return {
     perRound,
     sum,
+    expected,
+    filledCount,
     isComplete,
     isValid25,
     isGrandChelem: isGrand,
@@ -52,12 +55,14 @@ function computeRoundSummary(players, inputs){
   };
 }
 
-// Écrit la ronde et les totaux dans Firestore quand la somme vaut 25
+// Applique une ronde complétée aux totaux et écrit dans Firestore
 async function applyRoundScore(summary){
-  const mod = window.ModInit || {};
-  const state = mod.state || {};
-  const getDb = mod.getDb;
-
+  const modInit = window.ModInit;
+  if (!modInit) {
+    console.warn('[applyRoundScore] ModInit manquant');
+    return;
+  }
+  const { state, getDb } = modInit;
   if (!getDb) {
     console.warn('[applyRoundScore] getDb absent');
     return;
@@ -88,37 +93,58 @@ async function applyRoundScore(summary){
 
   // Totaux de base (normalisés "0","1",...)
   const baseTotals = [];
-  for (let i=0;i<n;i++){
+  for (let i = 0; i < n; i++) {
     const key = String(i);
-    baseTotals[i] = Number(state.totals?.[key] || 0);
+    const raw = state.totals && Object.prototype.hasOwnProperty.call(state.totals, key)
+      ? state.totals[key]
+      : 0;
+    const v = Number(raw||0);
+    baseTotals[i] = Number.isFinite(v) ? v : 0;
   }
 
-  // Points de la ronde (après éventuel Grand Chelem)
-  let roundVals = summary.perRound.slice();
-  if (summary.isGrandChelem && summary.grandChelemIndex >= 0) {
-    roundVals = roundVals.map((v,idx)=> idx===summary.grandChelemIndex ? 0 : 25);
+  const perRound = summary.perRound || [];
+  const roundVals = new Array(n).fill(0);
+
+  if (summary.isGrandChelem && summary.grandChelemIndex >= 0 && summary.grandChelemIndex < n) {
+    // Grand chelem : le joueur gagnant prend 0, les autres 25
+    for (let i = 0; i < n; i++) {
+      roundVals[i] = (i === summary.grandChelemIndex) ? 0 : 25;
+    }
+  } else {
+    // Cas normal : on applique les valeurs telles quelles
+    for (let i = 0; i < n; i++) {
+      const v = perRound[i];
+      roundVals[i] = Number.isFinite(v) ? v : 0;
+    }
   }
 
-  const newTotalsArr = baseTotals.map((t,i)=> t + (Number(roundVals[i])||0));
+  const newTotalsArr = [];
+  for (let i = 0; i < n; i++) {
+    newTotalsArr[i] = baseTotals[i] + roundVals[i];
+  }
 
-  // Détermination de fin de partie
+  // Détection de fin de partie : >= 100 points
   let gameOver = false;
   let winnerId = null;
-  let maxTotal = -Infinity;
-  newTotalsArr.forEach(v => { if (v>maxTotal) maxTotal = v; });
-  if (Number.isFinite(maxTotal) && maxTotal >= 100) {
-    gameOver = true;
-    let minTotal = Infinity;
-    let winIndex = -1;
-    newTotalsArr.forEach((v,i)=>{
-      if (v < minTotal) {
-        minTotal = v;
-        winIndex = i;
-      }
-    });
-    if (winIndex >= 0 && playersOrdered[winIndex] && playersOrdered[winIndex].deviceId) {
-      winnerId = playersOrdered[winIndex].deviceId;
+
+  let minTotal = Infinity;
+  let minIdx = -1;
+  for (let i = 0; i < n; i++) {
+    if (newTotalsArr[i] < minTotal) {
+      minTotal = newTotalsArr[i];
+      minIdx = i;
     }
+  }
+  if (minIdx >= 0 && playersOrdered[minIdx]) {
+    const did = playersOrdered[minIdx].deviceId;
+    if (did) {
+      winnerId = did;
+    }
+  }
+
+  // Si au moins un joueur atteint 100 ou plus → fin de partie
+  if (newTotalsArr.some(v => v >= 100)) {
+    gameOver = true;
   }
 
   // Map "p1","p2",... pour compatibilité avec ton schema existant
@@ -156,6 +182,67 @@ async function applyRoundScore(summary){
   }
 }
 
+async function finishGameNow(){
+  try{
+    const modInit = window.ModInit || {};
+    const state = modInit.state;
+    const getDb = modInit.getDb;
+    if(!state || !getDb){
+      console.warn('[finishGameNow] ModInit/state/getDb manquants');
+      return;
+    }
+    const db = getDb();
+    if(!db){
+      console.warn('[finishGameNow] DB indisponible');
+      return;
+    }
+    if(!state.gameId){
+      console.warn('[finishGameNow] gameId manquant');
+      return;
+    }
+
+    const playersOrdered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
+    const n = playersOrdered.length;
+
+    let winnerId = null;
+
+    if(n>0){
+      let minTotal = Infinity;
+      let minIdx = -1;
+      for(let i=0;i<n;i++){
+        const key = String(i);
+        const rawVal = state.totals && Object.prototype.hasOwnProperty.call(state.totals, key)
+          ? state.totals[key]
+          : 0;
+        const v = Number(rawVal||0);
+        if(v < minTotal){
+          minTotal = v;
+          minIdx = i;
+        }
+      }
+      if(minIdx>=0 && playersOrdered[minIdx] && playersOrdered[minIdx].deviceId){
+        winnerId = playersOrdered[minIdx].deviceId;
+      }
+    }
+
+    const ref = doc(db, 'scores_dame_de_pique', state.gameId);
+    const payload = {
+      gameOver: true,
+      winnerId: winnerId || null,
+      roundError: "",
+      inputs: {}
+    };
+
+    await updateDoc(ref, payload);
+    console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
+
+    state.gameOver = true;
+    state.currentInputs = {};
+  }catch(e){
+    console.error('[finishGameNow] erreur finishGameNow:', e);
+  }
+}
+
 function checkGameOver(){ return false; } // pas utilisé directement ici
 
-window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver };
+window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver, finishGameNow };
