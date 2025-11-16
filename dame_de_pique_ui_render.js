@@ -22,16 +22,16 @@ function renderPlayers(){
     baseDealerIndex = baseDealerIndex % playerCount;
   }
 
-  // Numéro de ronde (au moins 1)
+  // Numéro de ronde
   const roundNumber = Number.isInteger(state.round) ? state.round : 1;
 
-  // Décalage en fonction de la ronde (0 pour la 1re, 1 pour la 2e, etc.)
+  // Décalage
   const offset = playerCount > 0 ? (roundNumber - 1 + playerCount) % playerCount : 0;
 
-  // Index du brasseur pour la ronde actuelle
+  // Index du brasseur actuel
   const currentDealerIndex = playerCount > 0 ? (baseDealerIndex + offset) % playerCount : 0;
 
-  // Rendu de la liste des joueurs
+  // Rendu joueurs
   players.forEach((p, idx) => {
     const row = document.createElement('div');
     row.className = 'line';
@@ -39,7 +39,6 @@ function renderPlayers(){
     const name = document.createElement('div');
     name.textContent = p?.name || `Joueur ${idx + 1}`;
 
-    // Badge "Brasseur" sur le joueur courant
     if (idx === currentDealerIndex) {
       const badge = document.createElement('span');
       badge.className = 'badge';
@@ -64,12 +63,12 @@ function renderPlayers(){
   const dealerPlayer = players[currentDealerIndex] || null;
   const dealerName = dealerPlayer && dealerPlayer.name ? dealerPlayer.name : '—';
 
-  const dealerEl = $('dealerName');      // ✅ sécurité ajoutée
-  if (dealerEl) {
-    dealerEl.textContent = dealerName;
-  }
+  // 🔧 Correction : sécurité ajoutée
+  const dealerEl = $('dealerName');
+  if (dealerEl) dealerEl.textContent = dealerName;
 
-  $('round').textContent = String(state.round);
+  const roundEl = $('round');
+  if (roundEl) roundEl.textContent = String(state.round);
 
   const meta = document.getElementById('meta');
   if (meta) {
@@ -89,12 +88,8 @@ function renderPlayers(){
 function renderTotals(){
   const { state } = window.ModInit;
   const host = document.getElementById('totals');
-
-  // Si l'élément existe (ancienne UI ou futur besoin), on le remplit,
-  // sinon on saute seulement cette partie visuelle.
   if (host) {
     host.innerHTML = '';
-
     (state.players||[]).forEach((p,idx)=>{
       const line=document.createElement('div'); line.className='line';
       const n=document.createElement('div'); n.textContent=p?.name||`Joueur ${idx+1}`;
@@ -106,7 +101,6 @@ function renderTotals(){
     });
   }
 
-  // Statut de la ronde basé sur les inputs Firestore
   const inputs = state.currentInputs || {};
   const submitted = Object.keys(inputs).length;
   const expected = (state.players||[]).length;
@@ -117,18 +111,15 @@ function renderTotals(){
   if (re) {
     const { computeRoundSummary, applyRoundScore } = window.ModRounds;
 
-    // 🔚 Cas 1 : partie déjà terminée
     if (state.gameOver) {
       if (rs) rs.textContent = "Partie terminée.";
 
-      // Désactiver le bouton "Inscrire mon pointage"
       const btn = document.getElementById('btnOpenScore');
       if (btn) {
         btn.disabled = true;
         btn.textContent = "Partie terminée";
       }
 
-      // Chercher le gagnant (si winnerId connu)
       let winnerName = "—";
       let winnerTotal = null;
 
@@ -143,16 +134,12 @@ function renderTotals(){
         }
       }
 
-      // Si winnerId manquant, on essaie de déterminer le plus petit total
       if (winnerName === "—") {
         let minTotal = Infinity;
         let minIdx = -1;
         Object.keys(state.totals || {}).forEach(k=>{
           const v = Number(state.totals[k] || 0);
-          if (v < minTotal) {
-            minTotal = v;
-            minIdx = parseInt(k,10);
-          }
+          if (v < minTotal) { minTotal = v; minIdx = parseInt(k,10); }
         });
         if (minIdx >= 0 && ordered[minIdx]) {
           winnerName = ordered[minIdx].name || `Joueur ${minIdx+1}`;
@@ -166,11 +153,9 @@ function renderTotals(){
         re.textContent = `Partie terminée. Gagnant : ${winnerName}.`;
       }
 
-      // On ne fait plus de validation de ronde ni d'appel à applyRoundScore
       return;
     }
 
-    // 🔁 Cas 2 : partie en cours → logique de validation de ronde
     const summary = computeRoundSummary(state.players, inputs);
 
     if (!summary.isComplete) {
