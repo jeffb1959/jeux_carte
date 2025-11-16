@@ -119,7 +119,7 @@ function renderTotals(){
 
       // Désactiver le bouton "Inscrire mon pointage"
       const btn = document.getElementById('btnOpenScore');
-      if (btn) {
+      if (btn) {                      // ✅ sécurité ajoutée
         btn.disabled = true;
         btn.textContent = "Partie terminée";
       }
