@@ -3,28 +3,84 @@ const $=(id)=>document.getElementById(id);
 function renderPlayers(){
   const { state } = window.ModInit;
   const { computePassRule } = window.ModRounds;
-  const host=$('playersList'); if(!host) return; host.innerHTML='';
-  (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0)).forEach((p,idx)=>{
-    const row=document.createElement('div'); row.className='line';
-    const name=document.createElement('div'); name.textContent=p?.name||`Joueur ${idx+1}`;
-    if(idx===state.dealerIndex){
-      const badge=document.createElement('span'); badge.className='badge'; badge.textContent='Brasseur'; name.appendChild(badge);
-    }
-    const val=document.createElement('div'); val.className='muted';
-    const key = (p.id!=null)? String(p.id): String(idx);
-    const total = Number.isFinite(window.ModInit.state.totals?.[key]) ? window.ModInit.state.totals[key] : 0;
-    val.textContent=`Total: ${total}`;
-    row.appendChild(name); row.appendChild(val); host.appendChild(row);
-  });
-  const pass=computePassRule(window.ModInit.state.round);
-  const dealerName=(window.ModInit.state.players?.[window.ModInit.state.dealerIndex]?.name)||'—';
-  $('dealerName').textContent=dealerName; $('round').textContent=String(window.ModInit.state.round);
-  const meta=document.getElementById('meta');
-  if(meta){
-    meta.innerHTML=`Code soirée: <strong id="code">${window.ModInit.state.soireeCode||'—'}</strong> • Tour <span id="round">${window.ModInit.state.round}</span> • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
+
+  const host = $('playersList');
+  if (!host) return;
+  host.innerHTML = '';
+
+  // Liste des joueurs triée dans l'ordre réel des sièges
+  const players = (state.players || [])
+    .slice()
+    .sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+
+  const playerCount = players.length;
+
+  // Index de base = brasseur du premier tour (leaderIndex)
+  let baseDealerIndex = Number.isInteger(state.dealerIndex) ? state.dealerIndex : 0;
+  if (baseDealerIndex < 0) baseDealerIndex = 0;
+  if (playerCount > 0 && baseDealerIndex >= playerCount) {
+    baseDealerIndex = baseDealerIndex % playerCount;
   }
-  const passEl=document.getElementById('passRule'); if(passEl) passEl.textContent=`Règle : ${pass}`;
+
+  // Numéro de ronde (au moins 1)
+  const roundNumber = Number.isInteger(state.round) ? state.round : 1;
+
+  // Décalage en fonction de la ronde (0 pour la 1re, 1 pour la 2e, etc.)
+  const offset = playerCount > 0 ? (roundNumber - 1 + playerCount) % playerCount : 0;
+
+  // Index du brasseur pour la ronde actuelle
+  const currentDealerIndex = playerCount > 0 ? (baseDealerIndex + offset) % playerCount : 0;
+
+  // Rendu de la liste des joueurs
+  players.forEach((p, idx) => {
+    const row = document.createElement('div');
+    row.className = 'line';
+
+    const name = document.createElement('div');
+    name.textContent = p?.name || `Joueur ${idx + 1}`;
+
+    // Badge "Brasseur" sur le joueur courant
+    if (idx === currentDealerIndex) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = 'Brasseur';
+      name.appendChild(badge);
+    }
+
+    const val = document.createElement('div');
+    val.className = 'muted';
+    const key = (p && p.id != null) ? String(p.id) : String(idx);
+    const total = Number.isFinite(state.totals?.[key]) ? state.totals[key] : 0;
+    val.textContent = `Total: ${total}`;
+
+    row.appendChild(name);
+    row.appendChild(val);
+    host.appendChild(row);
+  });
+
+  const pass = computePassRule(state.round);
+
+  // Brasseur courant pour l'en-tête
+  const dealerPlayer = players[currentDealerIndex] || null;
+  const dealerName = dealerPlayer && dealerPlayer.name ? dealerPlayer.name : '—';
+
+  $('dealerName').textContent = dealerName;
+  $('round').textContent = String(state.round);
+
+  const meta = document.getElementById('meta');
+  if (meta) {
+    const codeSoiree = state.soireeCode || '';
+    const gameId = state.gameId || '';
+    meta.innerHTML =
+      `Code soirée: <strong id="code">${codeSoiree}</strong>` +
+      ` • GID: <span id="gameId">${gameId}</span>` +
+      ` • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
+  }
+
+  const passEl = document.getElementById('passRule');
+  if (passEl) passEl.textContent = `Règle : ${pass}`;
 }
+
 
 function renderTotals(){
   const { state } = window.ModInit;
