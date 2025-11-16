@@ -76,7 +76,7 @@ function renderPlayers(){
     const gameId = state.gameId || '';
     meta.innerHTML =
       `Code soirée: <strong id="code">${codeSoiree}</strong>` +
-      ` • GID: <span id="gameId">${gameId}</span>` +
+      ` • Ronde: <span>${roundNumber}</span>` +
       ` • Brasseur: <strong id="dealerName">${dealerName}</strong>`;
   }
 
@@ -183,3 +183,4 @@ function renderAll(){
 }
 
 window.ModUI = { renderPlayers, renderTotals, renderAll };
+
