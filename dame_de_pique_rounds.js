@@ -234,6 +234,20 @@ async function finishGameNow(){
     };
 
     await updateDoc(ref, payload);
+        // Après avoir marqué la partie terminée dans scores_dame_de_pique,
+    // on marque aussi la soirée comme "finished" pour stopper les redirections.
+    if (state.soireeCode) {
+      try {
+        const soireeRef = doc(db, 'soirees', state.soireeCode);
+        await updateDoc(soireeRef, {
+          status: 'finished'
+        });
+        console.debug('[finishGameNow] status=finished mis à jour dans soirees.');
+      } catch (e) {
+        console.warn('[finishGameNow] impossible de mettre à jour le status de la soirée :', e);
+      }
+    }
+
     console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
      
     // 🔴 NOUVEAU : libérer la soirée
