@@ -64,7 +64,11 @@ function renderPlayers(){
   const dealerPlayer = players[currentDealerIndex] || null;
   const dealerName = dealerPlayer && dealerPlayer.name ? dealerPlayer.name : '—';
 
-  $('dealerName').textContent = dealerName;
+  const dealerEl = $('dealerName');      // ✅ sécurité ajoutée
+  if (dealerEl) {
+    dealerEl.textContent = dealerName;
+  }
+
   $('round').textContent = String(state.round);
 
   const meta = document.getElementById('meta');
@@ -119,7 +123,7 @@ function renderTotals(){
 
       // Désactiver le bouton "Inscrire mon pointage"
       const btn = document.getElementById('btnOpenScore');
-      if (btn) {                      // ✅ sécurité ajoutée
+      if (btn) {
         btn.disabled = true;
         btn.textContent = "Partie terminée";
       }
