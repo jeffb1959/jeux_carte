@@ -1,4 +1,4 @@
-import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { doc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 function computePassRule(round){
   const rules=['À droite','À gauche','Au centre','Garde tes cartes'];
@@ -235,6 +235,14 @@ async function finishGameNow(){
 
     await updateDoc(ref, payload);
     console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
+     
+    // 🔴 NOUVEAU : libérer la soirée
+    if (state.soireeCode) {
+      const soireeRef = doc(db, 'soirees', state.soireeCode);
+      await updateDoc(soireeRef, {
+        currentGame: deleteField()
+      });
+    }
 
     state.gameOver = true;
     state.currentInputs = {};
