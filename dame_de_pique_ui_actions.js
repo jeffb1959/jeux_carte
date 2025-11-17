@@ -297,19 +297,6 @@ onReady(async ()=>{
       if(Number.isInteger(round)) state.round = round;
       if(extra && Array.isArray(extra.lastRoundPer)) state.lastRoundPer = extra.lastRoundPer;
 
-            // 🚪 Si la partie est terminée (gameOver=true), on renvoie tous les joueurs vers selection_jeux
-      if (window.ModInit && window.ModInit.state && window.ModInit.state.gameOver) {
-        const st = window.ModInit.state;
-        const code = st && st.soireeCode ? String(st.soireeCode) : "";
-        if (code) {
-          window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
-        } else {
-          window.location.href = 'selection_jeux.html';
-        }
-        return; // on ne continue pas le rendu local
-      }
-
-      
       renderAll();
       diagnosticsPush([
         ...notes,
@@ -334,4 +321,3 @@ onReady(async ()=>{
     diagnosticsPush(notes);
   }
 });
-
