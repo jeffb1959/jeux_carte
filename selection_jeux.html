@@ -203,10 +203,7 @@
         applyLeaderState(d);
 
         const cg = d.currentGame;
-        const status = d.status || 'active';
-
-        // 🔁 Redirection vers le jeu seulement si la soirée n'est pas marquée "finished"
-        if(status !== 'finished' && cg && cg.gid && cg.type){
+        if(cg && cg.gid && cg.type){
           const target = cg.type === 'dame_de_pique' ? 'dame_de_pique.html'
                        : cg.type === 'chialeux'      ? 'chialeux.html'
                        :                               'jeu_du_9.html';
