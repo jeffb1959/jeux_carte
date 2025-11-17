@@ -1,4 +1,4 @@
-import { doc, updateDoc, getDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { doc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 function computePassRule(round){
   const rules=['À droite','À gauche','Au centre','Garde tes cartes'];
@@ -154,9 +154,7 @@ async function applyRoundScore(summary){
   });
 
   const roundNumber = state.round || 1;
-  
-console.warn(">>> DEBUG soireeCode =", soireeCode);
-  
+
   const ref = doc(db, 'scores_dame_de_pique', state.gameId);
   const payload = {
     lastRound: {
@@ -202,27 +200,7 @@ async function finishGameNow(){
       console.warn('[finishGameNow] gameId manquant');
       return;
     }
-        // On essaie d'avoir un soireeCode fiable.
-    // 1) D'abord celui qui vient de l'URL (state.soireeCode)
-    let soireeCode = state.soireeCode ? String(state.soireeCode).replace(/\D/g,"").slice(0,4) : "";
 
-    // 2) Si on ne l'a pas, on le récupère depuis le doc de scores (champ "code")
-    if (!soireeCode && state.gameId) {
-      try {
-        const scoreRef = doc(db, 'scores_dame_de_pique', state.gameId);
-        const snapScore = await getDoc(scoreRef);
-        if (snapScore.exists()) {
-          const dataScore = snapScore.data();
-          if (dataScore && dataScore.code) {
-            soireeCode = String(dataScore.code).replace(/\D/g,"").slice(0,4);
-            console.debug('[finishGameNow] soireeCode récupéré depuis scores_dame_de_pique:', soireeCode);
-          }
-        }
-      } catch (e) {
-        console.warn('[finishGameNow] impossible de lire scores_dame_de_pique pour retrouver le code de soirée :', e);
-      }
-    }
-    
     const playersOrdered = (state.players||[]).slice().sort((a,b)=>(a?.order??0)-(b?.order??0));
     const n = playersOrdered.length;
 
@@ -246,7 +224,7 @@ async function finishGameNow(){
         winnerId = playersOrdered[minIdx].deviceId;
       }
     }
-  
+
     const ref = doc(db, 'scores_dame_de_pique', state.gameId);
     const payload = {
       gameOver: true,
@@ -258,30 +236,27 @@ async function finishGameNow(){
     await updateDoc(ref, payload);
         // Après avoir marqué la partie terminée dans scores_dame_de_pique,
     // on marque aussi la soirée comme "finished" pour stopper les redirections.
-    if (soireeCode) {
-      const soireeRef = doc(db, 'soirees', soireeCode);
+    if (state.soireeCode) {
+      try {
+        const soireeRef = doc(db, 'soirees', state.soireeCode);
+        await updateDoc(soireeRef, {
+          status: 'finished'
+        });
+        console.debug('[finishGameNow] status=finished mis à jour dans soirees.');
+      } catch (e) {
+        console.warn('[finishGameNow] impossible de mettre à jour le status de la soirée :', e);
+      }
+    }
+
+    console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
+     
+    // 🔴 NOUVEAU : libérer la soirée
+    if (state.soireeCode) {
+      const soireeRef = doc(db, 'soirees', state.soireeCode);
       await updateDoc(soireeRef, {
         currentGame: deleteField()
       });
     }
-
-
-    console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
-     
-    if (soireeCode) {
-      try {
-        const soireeRef = doc(db, 'soirees', soireeCode);
-        await updateDoc(soireeRef, {
-          status: 'finished'
-        });
-        console.debug('[finishGameNow] status=finished mis à jour dans soirees pour', soireeCode);
-      } catch (e) {
-        console.warn('[finishGameNow] impossible de mettre à jour le status de la soirée :', e);
-      }
-    } else {
-      console.warn('[finishGameNow] soireeCode introuvable, impossible de mettre status=finished');
-    }
-
 
     state.gameOver = true;
     state.currentInputs = {};
@@ -293,7 +268,3 @@ async function finishGameNow(){
 function checkGameOver(){ return false; } // pas utilisé directement ici
 
 window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver, finishGameNow };
-
-
-
-
