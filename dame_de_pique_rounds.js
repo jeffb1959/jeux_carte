@@ -246,8 +246,7 @@ async function finishGameNow(){
         winnerId = playersOrdered[minIdx].deviceId;
       }
     }
-  console.debug('[finishGameNow] Partie marquée terminée (gameOver=true).');
-
+  
     const ref = doc(db, 'scores_dame_de_pique', state.gameId);
     const payload = {
       gameOver: true,
@@ -294,6 +293,7 @@ async function finishGameNow(){
 function checkGameOver(){ return false; } // pas utilisé directement ici
 
 window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver, finishGameNow };
+
 
 
 
