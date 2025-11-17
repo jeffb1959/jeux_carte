@@ -154,7 +154,9 @@ async function applyRoundScore(summary){
   });
 
   const roundNumber = state.round || 1;
-
+  
+console.warn(">>> DEBUG soireeCode =", soireeCode);
+  
   const ref = doc(db, 'scores_dame_de_pique', state.gameId);
   const payload = {
     lastRound: {
@@ -291,4 +293,5 @@ async function finishGameNow(){
 function checkGameOver(){ return false; } // pas utilisé directement ici
 
 window.ModRounds = { computePassRule, computeRoundSummary, applyRoundScore, checkGameOver, finishGameNow };
+
 
