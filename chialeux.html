@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chialeux – Prédictions</title>
   <link rel="stylesheet" href="chialeux.css">
-  <script defer src="chialeux.js"></script>
+ <!-- <script defer src="chialeux.js"></script>  -->
 </head>
 
 <body>
@@ -75,6 +75,36 @@
 
 <!-- Zone pour afficher les erreurs -->
 <div id="roundError" class="round-error"></div>
+
+<!-- Fenêtre modale de saisie de prédiction (au-dessus de la carte pointage, sans cacher la carte prédiction) -->
+<div id="predictionModalOverlay" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h2 id="modalTitle" class="modal-title">Prédiction</h2>
+
+    <div class="modal-player">
+      <span class="modal-label">Joueur :</span>
+      <span id="modalPlayerName" class="modal-player-name">—</span>
+    </div>
+
+    <div class="modal-body">
+      <label for="modalPredictionInput" class="modal-label">Nombre de levées</label>
+      <input
+        id="modalPredictionInput"
+        type="number"
+        min="0"
+        class="modal-input"
+        disabled
+      >
+      <button id="modalValidateBtn" class="modal-btn" disabled>Valider</button>
+    </div>
+  </div>
+</div>
+
+    <!-- Module Firestore pour le Chialeux -->
+    <script type="module" src="modChialeux.js"></script>
+
+    <!-- UI principale (avec imports Firebase) -->
+    <script type="module" src="chialeux.js"></script>
 
 </body>
 </html>
