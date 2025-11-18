@@ -82,3 +82,34 @@ h1{ margin:0 0 4px; font-size:clamp(22px,5vw,28px) }
 #playersList .line .muted {
   font-size: 1.5rem;
 }
+
+/* Mise en évidence du message d'erreur de ronde */
+#roundError {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: var(--danger-pale); /* rouge pâle déjà défini dans :root */
+  color: var(--danger-text);            /* rouge foncé déjà défini dans :root */
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  min-height: 1.2em; /* évite que la carte saute quand vide */
+}
+
+/* Animation douce (respiration) quand un message est présent */
+@keyframes roundErrorPulse {
+  0% {
+    background-color: var(--danger-pale);
+  }
+  50% {
+    background-color: #fee2e2; /* un peu plus clair au milieu */
+  }
+  100% {
+    background-color: var(--danger-pale);
+  }
+}
+
+/* Dès que le div n'est plus vide, on lance l'animation ~3,2 s (0,8s x 4) */
+#roundError:not(:empty) {
+  animation: roundErrorPulse 0.8s ease-in-out 0s 4;
+}
