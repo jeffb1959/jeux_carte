@@ -102,15 +102,32 @@ body {
   display: flex;
   align-items: center;
   padding: 8px 4px;
+  border-radius: 10px;
 }
 
-.player-name {
-  flex: 1;
-  font-weight: 600;
-  font-size: 1.1rem;
+/* États des cartes joueurs */
+
+.player-hidden {
+  display: none;
 }
 
-/* Anciennes entrées (on les garde au cas où, mais non utilisées) */
+/* Rouge pâle pour "à faire" (pending) */
+.player-card.player-pending {
+  background-color: #da7f5d;
+}
+
+/* Vert pour joueur en train de faire sa prédiction */
+.player-card.player-current {
+  background-color: #16a34a;
+  color: white;
+}
+
+/* Vert pâle pour joueur avec prédiction déjà validée */
+.player-card.player-done {
+  background-color: #bbf7d0;
+}
+
+/* Anciennes entrées (non utilisées actuellement, on les garde au cas où) */
 .predict-input {
   width: 60px;
   font-size: 1.2rem;
@@ -213,7 +230,7 @@ body {
 
 .finish-btn {
   position: relative;
-  background: #da7f5d;
+  background: #dc2626;
   color: white;
   overflow: hidden;
 }
@@ -241,4 +258,81 @@ body {
   background: var(--danger-pale);
   color: var(--danger-text);
   display: none;
+}
+
+/* --- Fenêtre modale pour les prédictions --- */
+/* Recouvre seulement la partie basse de l'écran, au-dessus de la carte pointage */
+
+.modal-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50vh;                    /* moitié basse de l'écran */
+  background: rgba(0, 0, 0, 0.35);  /* assombrissement sur la zone du bas */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 50;
+}
+
+.modal-card {
+  width: 90%;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.modal-title {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.modal-player {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.modal-player-name {
+  font-weight: 700;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.modal-input {
+  font-size: 1.3rem;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+}
+
+.modal-btn {
+  margin-top: 6px;
+  padding: 10px;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: white;
+}
+
+/* État désactivé visuel (case + bouton) */
+.modal-input:disabled,
+.modal-btn:disabled {
+  opacity: 0.5;
 }
