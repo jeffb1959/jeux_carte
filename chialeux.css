@@ -1,0 +1,244 @@
+:root {
+  --danger-pale: #fee2e2;
+  --danger-text: #b91c1c;
+  --accent: #2563eb;
+  --bg-soft: #f8fafc;
+  --card-bg: white;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  background: var(--bg-soft);
+}
+
+.page {
+  max-width: 500px;
+  margin: auto;
+  padding: 15px;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.top-section,
+.bottom-section {
+  margin-bottom: 30px;
+}
+
+/* --- Carte de titre / brasseur / cartes / mode --- */
+
+.header-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px #0002;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.game-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 8px;
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.header-left,
+.header-right,
+.header-mode {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.95rem;
+}
+
+.header-label {
+  font-weight: 600;
+}
+
+.header-value {
+  font-weight: 700;
+}
+
+/* --- Carte générique --- */
+
+.card {
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px #0001;
+  padding: 10px;
+}
+
+.predictions-card {
+  margin-bottom: 15px;
+}
+
+.score-card {
+  margin-top: 5px;
+}
+
+/* --- Prédictions --- */
+
+.prediction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.player-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* Anciennes entrées (on les garde au cas où, mais non utilisées) */
+.predict-input {
+  width: 60px;
+  font-size: 1.2rem;
+  padding: 4px 6px;
+  margin-right: 10px;
+}
+
+.predict-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+/* Nouvelle affichage de la prédiction (lecture seule) */
+.predict-display {
+  font-size: 1.3rem;
+  font-weight: 700;
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* --- Résumé des prédictions --- */
+
+.prediction-summary {
+  margin-top: 20px;
+  padding: 15px;
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px #0001;
+}
+
+.my-prediction {
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.others-predictions {
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.hidden {
+  display: none;
+}
+
+/* --- Scoreboard --- */
+
+.score-board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.score-row {
+  display: flex;
+  justify-content: space-between;
+  background: var(--card-bg);
+  padding: 10px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px #0001;
+}
+
+.score-name {
+  font-weight: 600;
+  font-size: 1.0rem;
+}
+
+.score-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* --- Hôte : boutons --- */
+
+.host-controls {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-btn,
+.finish-btn {
+  width: 100%;
+  font-size: 1.1rem;
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+}
+
+.setup-btn {
+  background: #6b7280;
+  color: white;
+}
+
+.finish-btn {
+  position: relative;
+  background: #da7f5d;
+  color: white;
+  overflow: hidden;
+}
+
+.finish-btn .fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0%;
+  height: 100%;
+  background: #7f1d1d;
+  opacity: 0.25;
+}
+
+/* --- Erreurs --- */
+
+.round-error {
+  margin-top: 10px;
+  padding: 10px;
+  min-height: 1.2em;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: var(--danger-pale);
+  color: var(--danger-text);
+  display: none;
+}
