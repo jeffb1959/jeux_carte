@@ -24,43 +24,22 @@ function wireFinishHold2s(){
       fill.style.transition='width 2s linear';
       fill.style.width='100%';
     }
-    timer=setTimeout(()=>{
+     timer=setTimeout(()=>{
       clearTimeout(timer); timer=null;
       try{
         const modRounds = window.ModRounds;
-        if(modRounds && typeof modRounds.finishGameNow === 'function'){
-          modRounds.finishGameNow().finally(()=>{
-            const modInit = window.ModInit || {};
-            const state = modInit.state || {};
-            const code = state && state.soireeCode ? String(state.soireeCode) : "";
-            if(code){
-              window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
-            } else {
-              window.location.href = 'selection_jeux.html';
-            }
+        if (modRounds && typeof modRounds.finishGameNow === 'function') {
+          modRounds.finishGameNow().catch((e)=>{
+            console.error('[wireFinishHold2s] erreur finishGameNow:', e);
           });
         } else {
-          const modInit = window.ModInit || {};
-          const state = modInit.state || {};
-          const code = state && state.soireeCode ? String(state.soireeCode) : "";
-          if(code){
-            window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
-          } else {
-            window.location.href = 'selection_jeux.html';
-          }
+          console.warn('[wireFinishHold2s] ModRounds.finishGameNow indisponible.');
         }
       } catch(e){
-        console.error('[wireFinishHold2s] erreur finishGameNow:', e);
-        const modInit = window.ModInit || {};
-        const state = modInit.state || {};
-        const code = state && state.soireeCode ? String(state.soireeCode) : "";
-        if(code){
-          window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
-        } else {
-          window.location.href = 'selection_jeux.html';
-        }
+        console.error('[wireFinishHold2s] exception dans wireFinishHold2s:', e);
       }
     },2000);
+
   };
 
   const cancel=()=>{
@@ -222,6 +201,8 @@ onReady(async ()=>{
   const { listenScores } = window.ModScores;
   const { renderAll } = window.ModUI;
 
+  let hasNavigatedFromSoiree = false;  
+
   await boot();
   renderAll();
   wireOpenScore();
@@ -257,6 +238,22 @@ onReady(async ()=>{
       diagnosticsPush(notes);
       return;
     }
+    
+    const current = data.currentGame || null;
+    const myGid = state.gameId ? String(state.gameId) : "";
+    const currentGid = current && current.gid ? String(current.gid) : "";
+
+    if (!currentGid || (myGid && currentGid !== myGid)) {
+      const code = state.soireeCode ? String(state.soireeCode) : "";
+      if (code && !hasNavigatedFromSoiree) {
+        hasNavigatedFromSoiree = true;
+        setTimeout(()=>{
+          window.location.href = `selection_jeux.html?code=${encodeURIComponent(code)}`;
+        }, 400);
+      }
+      return;
+    }
+
     state.players = Array.isArray(data.players)? data.players : (data.players?.list||[]);
     state.dealerIndex = Number.isInteger(data.leaderIndex)? data.leaderIndex : (data.dealerIndex ?? 0);
     if(Number.isInteger(data.round)) state.round = data.round;
