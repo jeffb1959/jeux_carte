@@ -175,7 +175,7 @@ body {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 /* --- Scoreboard --- */
@@ -336,3 +336,4 @@ body {
 .modal-btn:disabled {
   opacity: 0.5;
 }
+
