@@ -122,13 +122,13 @@ import {
       state.players = players;
       state.myIndex = myIndex;
 
+      // Brasseur (dealer) : on continue d'utiliser leaderIndex comme fallback
       const dealerIndex = Number.isInteger(scores.dealerIndex)
         ? scores.dealerIndex
         : (Number.isInteger(soiree.leaderIndex) ? soiree.leaderIndex : 0);
 
-      const hostIndex = Number.isInteger(soiree.leaderIndex)
-        ? soiree.leaderIndex
-        : 0;
+      // Hôte = joueur 0 de la liste players (premier inscrit)
+      const hostIndex = 0;
 
       const model = {
         soireeCode: state.soireeCode,
