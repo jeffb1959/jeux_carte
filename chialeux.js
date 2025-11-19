@@ -213,11 +213,14 @@ function updateHeaderFromModel(model) {
       modeEl.textContent = "Prédiction";
     } else if (model.status === "results") {
       modeEl.textContent = "Résultat";
+    } else if (model.status === "finished") {
+      modeEl.textContent = "Partie terminée";
     } else {
       modeEl.textContent = "Jeu";
     }
   }
 }
+
 
 /* --- Prédictions : couleurs + valeurs --- */
 
@@ -536,3 +539,4 @@ function onReady(fn) {
   else
     fn();
 }
+
