@@ -366,7 +366,7 @@ import {
      *  - si tout le monde a entré :
      *      - somme(results) == cardsThisRound ?
      *          - NON -> results = {}, resultsError = true
-     *          - OUI -> calcul des nouveaux scores, resultsError = false
+     *          - OUI -> calcul des nouveaux scores, progression de la brasse, reset pour nouvelles prédictions
      */
     async function submitResult(playerIndex, tricks) {
       const { db, gid, scoresData, players } = state;
@@ -446,12 +446,72 @@ import {
         newScores[i] = updated;
       }
 
+      // --- Préparation de la prochaine brasse ---
+      const round = Number.isInteger(scoresData.round) ? scoresData.round : 1;
+      const maxCards = Number.isInteger(scoresData.maxCards) ? scoresData.maxCards : 10;
+      const currentCards = Number.isInteger(scoresData.cardsThisRound)
+        ? scoresData.cardsThisRound
+        : 1;
+
+      const totalRounds = 2 * maxCards - 1;
+      let nextRound = round + 1;
+      let nextCardsThisRound = currentCards;
+
+      // Progression du nombre de cartes (1 → maxCards → 1)
+      if (round < maxCards) {
+        // phase montante
+        nextCardsThisRound = currentCards + 1;
+      } else {
+        // phase descendante
+        nextCardsThisRound = currentCards - 1;
+      }
+
+      if (nextCardsThisRound < 1) {
+        nextCardsThisRound = 1;
+      }
+
+      if (nextRound > totalRounds) {
+        nextRound = totalRounds; // étape "fin de partie" à gérer plus tard
+      }
+
+      // Rotation du brasseur
+      let nextDealerIndex = Number.isInteger(scoresData.dealerIndex)
+        ? scoresData.dealerIndex
+        : 0;
+
+      if (playerCount > 0) {
+        nextDealerIndex = (nextDealerIndex + 1) % playerCount;
+      }
+
+      // Nouveau premier joueur pour les prédictions
+      let nextPredictionTurnIndex = null;
+      if (playerCount > 0) {
+        const orderNext = computePredictionOrder(nextDealerIndex, playerCount);
+        if (orderNext.length > 0) {
+          nextPredictionTurnIndex = orderNext[0];
+        }
+      }
+
+      const patchFinal = {
+        scores: newScores,
+
+        // on efface les résultats de la brasse terminée
+        results: {},
+        resultsError: false,
+
+        // infos de progression
+        round: nextRound,
+        cardsThisRound: nextCardsThisRound,
+        dealerIndex: nextDealerIndex,
+
+        // reset pour la phase prédictions
+        predictions: {},
+        predictionTurnIndex: nextPredictionTurnIndex,
+        status: 'prediction'
+      };
+
       try {
-        await updateDoc(scoresRef, {
-          scores: newScores,
-          results: newResults,
-          resultsError: false
-        });
+        await updateDoc(scoresRef, patchFinal);
       } catch (err) {
         console.error('[ModChialeux] erreur submitResult (final):', err);
         throw err;
