@@ -241,8 +241,9 @@ function handleModalForCurrentTurn(model) {
   const input = document.getElementById("modalPredictionInput");
   const btn = document.getElementById("modalValidateBtn");
 
-  // Modale fermée si on n'est pas en phase "prediction"
-  if (status !== "prediction") {
+  // Cas 1 : on n'est pas en mode "Prédiction"
+  //         OU toutes les prédictions sont déjà faites
+  if (status !== "prediction" || predictionTurnIndex === null) {
     if (overlay) overlay.classList.add("hidden");
     if (input) input.disabled = true;
     if (btn) btn.disabled = true;
@@ -250,8 +251,8 @@ function handleModalForCurrentTurn(model) {
     return;
   }
 
-  if (myIndex == null || predictionTurnIndex == null) {
-    // Ce device est spectateur ou tous ont déjà prédit
+  // Cas 2 : ce device n'est pas associé à un joueur
+  if (myIndex == null) {
     if (overlay) overlay.classList.add("hidden");
     if (input) input.disabled = true;
     if (btn) btn.disabled = true;
@@ -259,8 +260,8 @@ function handleModalForCurrentTurn(model) {
     return;
   }
 
+  // Cas 3 : ce n'est pas mon tour → pas de modale ici
   if (myIndex !== predictionTurnIndex) {
-    // Ce n'est pas mon tour
     if (overlay) overlay.classList.add("hidden");
     if (input) input.disabled = true;
     if (btn) btn.disabled = true;
@@ -268,10 +269,11 @@ function handleModalForCurrentTurn(model) {
     return;
   }
 
-  // Ici : c'est au tour de CE joueur (device) de faire sa prédiction
+  // Cas 4 : c'est mon tour → modale visible et active
   ChialeuxUI.currentIndex = myIndex;
   openPredictionModalForIndex(myIndex, model);
 }
+
 
 /* --- Modale de prédiction : wiring bouton "Valider" --- */
 
@@ -349,3 +351,4 @@ function onReady(fn) {
   else
     fn();
 }
+
