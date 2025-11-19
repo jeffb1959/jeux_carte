@@ -560,6 +560,29 @@ import {
     }
 
     /**
+     * Termine la partie côté soiree en remettant currentGame à null.
+     * Cela permet aux clients d'être redirigés vers selection_jeux.html,
+     * comme dans Dame de Pique.
+     */
+    async function finishGameNow() {
+      const { db, soireeCode } = state;
+      if (!db || !soireeCode) {
+        console.warn('[ModChialeux] finishGameNow: db ou soireeCode manquant');
+        return;
+      }
+
+      const soireeRef = doc(db, 'soirees', soireeCode);
+      try {
+        await updateDoc(soireeRef, {
+          currentGame: null
+        });
+      } catch (err) {
+        console.error('[ModChialeux] erreur finishGameNow:', err);
+        throw err;
+      }
+    }
+
+    /**
      * Calcule l'ordre de prédiction à partir du brasseur (index), dans le sens horaire.
      */
     function computePredictionOrder(dealerIndex, playerCount) {
@@ -582,6 +605,7 @@ import {
       submitPrediction,
       startResultsPhase,
       submitResult,
+      finishGameNow,
       stop
     };
   }
