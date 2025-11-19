@@ -14,30 +14,7 @@
 
   <!-- Carte de titre / infos de la brasse -->
   <div class="header-card">
-    <h1 class="game-title">Vas-Chier Mange de la Marde</h1>
-
-    <div class="header-row">
-      <div class="header-left">
-        <span class="header-label">Brasseur :</span>
-        <span id="dealerName" class="header-value">—</span>
-      </div>
-      <div class="header-right">
-        <span class="header-label">Cartes :</span>
-        <span id="cardsCount" class="header-value">0</span>
-      </div>
-    </div>
-
-    <div class="header-mode">
-      <span class="header-label">Mode :</span>
-      <span id="modeLabel" class="header-value">Prédiction</span>
-    </div>
-  </div>
-
-  <!-- Haut : prédictions -->
-  <div class="top-section">
-    <h2 class="section-title">Prédictions de la ronde</h2>
-
-    <div class="card predictions-card">
+...
       <!-- Conteneur principal des joueurs -->
       <div id="predictionList" class="prediction-list">
         <!-- Rempli dynamiquement par chialeux.js -->
@@ -64,6 +41,7 @@
 
   <!-- Boutons réservés à l'hôte -->
   <div id="hostControls" class="host-controls hidden">
+    <button id="btnStartResults" class="setup-btn">Démarrer les résultats</button>
     <button id="btnSetup" class="setup-btn">Set-up</button>
     <button id="btnFinish" class="finish-btn">
       <span>Fin de la partie</span>
@@ -86,8 +64,8 @@
       <span id="modalPlayerName" class="modal-player-name">—</span>
     </div>
 
-    <div class="modal-body">
-      <label for="modalPredictionInput" class="modal-label">Nombre de levées</label>
+    <div class="modal-field">
+      <label for="modalPredictionInput" class="modal-label">Prédiction :</label>
       <input
         id="modalPredictionInput"
         type="number"
@@ -96,6 +74,31 @@
         disabled
       >
       <button id="modalValidateBtn" class="modal-btn" disabled>Valider</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fenêtre modale de saisie des résultats (levées) -->
+<div id="resultModalOverlay" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h2 class="modal-title">Résultat de la brasse</h2>
+
+    <div class="modal-player">
+      <span class="modal-label">Joueur :</span>
+      <span id="resultModalPlayerName" class="modal-player-name">—</span>
+    </div>
+
+    <div class="modal-field">
+      <label for="resultModalInput" class="modal-label">Levées réalisées :</label>
+      <input
+        id="resultModalInput"
+        type="number"
+        min="0"
+        class="modal-input"
+      >
+      <button id="resultModalValidateBtn" class="modal-btn">
+        Valider
+      </button>
     </div>
   </div>
 </div>
