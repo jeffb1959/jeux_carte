@@ -14,7 +14,30 @@
 
   <!-- Carte de titre / infos de la brasse -->
   <div class="header-card">
-...
+    <h1 class="game-title">Vas-Chier Mange de la Marde</h1>
+
+    <div class="header-row">
+      <div class="header-left">
+        <span class="header-label">Brasseur :</span>
+        <span id="dealerName" class="header-value">—</span>
+      </div>
+      <div class="header-right">
+        <span class="header-label">Cartes :</span>
+        <span id="cardsCount" class="header-value">0</span>
+      </div>
+    </div>
+
+    <div class="header-mode">
+      <span class="header-label">Mode :</span>
+      <span id="modeLabel" class="header-value">Prédiction</span>
+    </div>
+  </div>
+
+  <!-- Haut : prédictions -->
+  <div class="top-section">
+    <h2 class="section-title">Prédictions de la ronde</h2>
+
+    <div class="card predictions-card">
       <!-- Conteneur principal des joueurs -->
       <div id="predictionList" class="prediction-list">
         <!-- Rempli dynamiquement par chialeux.js -->
@@ -57,6 +80,8 @@
 <!-- Fenêtre modale de saisie de prédiction (au-dessus de la carte pointage, sans cacher la carte prédiction) -->
 <div id="predictionModalOverlay" class="modal-overlay hidden">
   <div class="modal-card">
+    
+    
     <h2 id="modalTitle" class="modal-title">Prédiction</h2>
 
     <div class="modal-player">
@@ -64,8 +89,8 @@
       <span id="modalPlayerName" class="modal-player-name">—</span>
     </div>
 
-    <div class="modal-field">
-      <label for="modalPredictionInput" class="modal-label">Prédiction :</label>
+    <div class="modal-body">
+      <label for="modalPredictionInput" class="modal-label">Nombre de levées</label>
       <input
         id="modalPredictionInput"
         type="number"
@@ -77,7 +102,6 @@
     </div>
   </div>
 </div>
-
 <!-- Fenêtre modale de saisie des résultats (levées) -->
 <div id="resultModalOverlay" class="modal-overlay hidden">
   <div class="modal-card">
@@ -102,6 +126,7 @@
     </div>
   </div>
 </div>
+
 
     <!-- Module Firestore pour le Chialeux -->
     <script type="module" src="modChialeux.js"></script>
