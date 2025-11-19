@@ -126,6 +126,10 @@ import {
         ? scores.dealerIndex
         : (Number.isInteger(soiree.leaderIndex) ? soiree.leaderIndex : 0);
 
+      const hostIndex = Number.isInteger(soiree.leaderIndex)
+        ? soiree.leaderIndex
+        : 0;
+
       const model = {
         soireeCode: state.soireeCode,
         gid: state.gid,
@@ -133,18 +137,23 @@ import {
         players,
         myIndex,
         dealerIndex,
+        hostIndex,
+        isHost: (myIndex === hostIndex),
 
         round: Number.isInteger(scores.round) ? scores.round : 1,
         maxCards: Number.isInteger(scores.maxCards) ? scores.maxCards : 10,
         cardsThisRound: Number.isInteger(scores.cardsThisRound) ? scores.cardsThisRound : 1,
 
-        status: scores.status || 'prediction', // "prediction" | "play" | "results" | "finished"
+        status: scores.status || 'prediction', // "prediction" | "results" | "play" | "finished"
 
         scores: scores.scores || {},           // { "0": totalPoints, ... }
         predictions: scores.predictions || {}, // { "0": prédictionBrasse, ... }
         predictionTurnIndex: Number.isInteger(scores.predictionTurnIndex)
           ? scores.predictionTurnIndex
-          : null
+          : null,
+
+        results: scores.results || {},         // { "0": levées réelles, ... }
+        resultsError: !!scores.resultsError
       };
 
       onUpdate && onUpdate(model);
@@ -214,6 +223,11 @@ import {
         patch.predictions = {};
       }
 
+      // results init
+      if (!current.results) {
+        patch.results = {};
+      }
+
       // predictionTurnIndex : premier joueur à gauche du brasseur
       // 👉 On NE l'initialise que s'il n'y a encore AUCUNE prédiction.
       const hasAnyPrediction =
@@ -252,8 +266,6 @@ import {
      * Met à jour :
      *   - predictions.{index} = value
      *   - predictionTurnIndex = prochain joueur ou null si tous ont prédit
-     *
-     * NOTE : simple updateDoc, acceptable pour un petit groupe.
      */
     async function submitPrediction(playerIndex, value) {
       const { db, gid, scoresData, players } = state;
@@ -309,6 +321,144 @@ import {
     }
 
     /**
+     * Démarre la phase "results" (levées réelles), déclenchée par l'hôte.
+     */
+    async function startResultsPhase() {
+      const { db, gid, scoresData, players } = state;
+      if (!db || !gid || !scoresData) {
+        console.warn('[ModChialeux] startResultsPhase: état incomplet');
+        return;
+      }
+
+      const playerCount = players ? players.length : 0;
+      if (!playerCount) return;
+
+      const predictions = scoresData.predictions || {};
+      const nbPred = Object.keys(predictions).length;
+
+      // On ne démarre la phase résultats que si tout le monde a prédit
+      if (nbPred < playerCount) {
+        console.warn('[ModChialeux] startResultsPhase: prédictions incomplètes');
+        return;
+      }
+
+      const scoresRef = doc(db, 'scores_chialeux', gid);
+
+      const patch = {
+        status: 'results',
+        results: {},
+        resultsError: false
+      };
+
+      try {
+        await updateDoc(scoresRef, patch);
+      } catch (err) {
+        console.error('[ModChialeux] erreur startResultsPhase:', err);
+        throw err;
+      }
+    }
+
+    /**
+     * Soumet le résultat (levées réelles) pour un joueur.
+     * Logique :
+     *  - on met à jour results.{index} = tricks
+     *  - si tout le monde n'a pas encore entré ses levées -> on s'arrête là
+     *  - si tout le monde a entré :
+     *      - somme(results) == cardsThisRound ?
+     *          - NON -> results = {}, resultsError = true
+     *          - OUI -> calcul des nouveaux scores, resultsError = false
+     */
+    async function submitResult(playerIndex, tricks) {
+      const { db, gid, scoresData, players } = state;
+      if (!db || !gid || !scoresData) {
+        console.warn('[ModChialeux] submitResult: état incomplet');
+        return;
+      }
+      if (!Number.isFinite(playerIndex)) return;
+
+      const scoresRef = doc(db, 'scores_chialeux', gid);
+
+      const playerCount = players ? players.length : 0;
+      if (!playerCount) return;
+
+      const existingResults = (scoresData.results) || {};
+      const predictions = (scoresData.predictions) || {};
+      const scores = (scoresData.scores) || {};
+      const cardsThisRound = Number.isInteger(scoresData.cardsThisRound)
+        ? scoresData.cardsThisRound
+        : 1;
+
+      const newResults = { ...existingResults, [playerIndex]: tricks };
+
+      // Tant que tout le monde n'a pas inscrit son résultat, on ne valide pas
+      if (Object.keys(newResults).length < playerCount) {
+        try {
+          await updateDoc(scoresRef, {
+            [`results.${playerIndex}`]: tricks,
+            resultsError: false
+          });
+        } catch (err) {
+          console.error('[ModChialeux] erreur submitResult (partiel):', err);
+          throw err;
+        }
+        return;
+      }
+
+      // Ici : tous les joueurs ont inscrit leurs levées
+      let sum = 0;
+      for (const key of Object.keys(newResults)) {
+        const v = Number(newResults[key] || 0);
+        sum += v;
+      }
+
+      if (sum !== cardsThisRound) {
+        // Erreur : on efface les résultats et on signale l'erreur
+        try {
+          await updateDoc(scoresRef, {
+            results: {},
+            resultsError: true
+          });
+        } catch (err) {
+          console.error('[ModChialeux] erreur submitResult (erreur somme):', err);
+          throw err;
+        }
+        return;
+      }
+
+      // Somme correcte -> calcul des nouveaux scores
+      const newScores = { ...scores };
+
+      for (let i = 0; i < playerCount; i++) {
+        const oldTotal = typeof scores[i] === 'number' ? scores[i] : 10;
+        const pred = typeof predictions[i] === 'number' ? predictions[i] : 0;
+        const real = typeof newResults[i] === 'number' ? newResults[i] : 0;
+
+        let updated = oldTotal;
+
+        if (pred === real) {
+          updated = oldTotal + real;
+        } else {
+          const delta = Math.abs(real - pred);
+          updated = oldTotal - delta;
+        }
+
+        if (updated < 0) updated = 0;
+        newScores[i] = updated;
+      }
+
+      try {
+        await updateDoc(scoresRef, {
+          scores: newScores,
+          results: newResults,
+          resultsError: false
+        });
+      } catch (err) {
+        console.error('[ModChialeux] erreur submitResult (final):', err);
+        throw err;
+      }
+    }
+
+    /**
      * Calcule l'ordre de prédiction à partir du brasseur (index), dans le sens horaire.
      */
     function computePredictionOrder(dealerIndex, playerCount) {
@@ -329,6 +479,8 @@ import {
       init,
       listenCombined,
       submitPrediction,
+      startResultsPhase,
+      submitResult,
       stop
     };
   }
