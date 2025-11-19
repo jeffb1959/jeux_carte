@@ -1,4 +1,3 @@
-
 // modChialeux.js
 // Module de gestion Firestore pour le jeu du Chialeux.
 // Utilise Firebase Firestore v10.13.0 (SDK modulaire).
@@ -60,31 +59,33 @@ import {
       if (state.unsubSoiree) { state.unsubSoiree(); state.unsubSoiree = null; }
       if (state.unsubScores) { state.unsubScores(); state.unsubScores = null; }
 
-state.unsubSoiree = onSnapshot(
-  soireeRef,
-  (snap) => {
-    state.soireeData = snap.exists() ? snap.data() : null;
+      // Écoute du doc soirees/{code} : on met simplement à jour soireeData
+      // puis on reconstruit le modèle local si possible.
+      state.unsubSoiree = onSnapshot(
+        soireeRef,
+        (snap) => {
+          state.soireeData = snap.exists() ? snap.data() : null;
 
-    // ✅ On ne touche PAS au document scores_chialeux ici,
-    // on se contente de reconstruire le modèle local si possible.
-    try {
-      rebuildModelAndEmit(onUpdate);
-    } catch (err) {
-      console.error('[ModChialeux] erreur rebuildModelAndEmit (soirees):', err);
-      onError && onError(err);
-    }
-  },
-  (err) => {
-    console.error('[ModChialeux] erreur listen soirees:', err);
-    onError && onError(err);
-  }
-);
+          try {
+            rebuildModelAndEmit(onUpdate);
+          } catch (err) {
+            console.error('[ModChialeux] erreur rebuildModelAndEmit (soirees):', err);
+            onError && onError(err);
+          }
+        },
+        (err) => {
+          console.error('[ModChialeux] erreur listen soirees:', err);
+          onError && onError(err);
+        }
+      );
+
+      // Écoute du doc scores_chialeux/{gid} : ici on peut initialiser / compléter
+      // le doc à partir de soirees, puis reconstruire le modèle.
       state.unsubScores = onSnapshot(
         scoresRef,
         (snap) => {
           state.scoresData = snap.exists() ? snap.data() : null;
 
-          // Essaye d'initialiser / compléter scores_chialeux si incomplet
           ensureScoresInitializedFromSoiree().then(() => {
             rebuildModelAndEmit(onUpdate);
           }).catch(err => {
@@ -145,7 +146,7 @@ state.unsubSoiree = onSnapshot(
         maxCards: Number.isInteger(scores.maxCards) ? scores.maxCards : 10,
         cardsThisRound: Number.isInteger(scores.cardsThisRound) ? scores.cardsThisRound : 1,
 
-        status: scores.status || 'prediction', // "prediction" | "results" | "play" | "finished"
+        status: scores.status || 'prediction', // "prediction" | "results" | "finished"
 
         scores: scores.scores || {},           // { "0": totalPoints, ... }
         predictions: scores.predictions || {}, // { "0": prédictionBrasse, ... }
@@ -154,7 +155,11 @@ state.unsubSoiree = onSnapshot(
           : null,
 
         results: scores.results || {},         // { "0": levées réelles, ... }
-        resultsError: !!scores.resultsError
+        resultsError: !!scores.resultsError,
+
+        winnerIndex: Number.isInteger(scores.winnerIndex)
+          ? scores.winnerIndex
+          : null
       };
 
       onUpdate && onUpdate(model);
@@ -367,7 +372,9 @@ state.unsubSoiree = onSnapshot(
      *  - si tout le monde a entré :
      *      - somme(results) == cardsThisRound ?
      *          - NON -> results = {}, resultsError = true
-     *          - OUI -> calcul des nouveaux scores, progression de la brasse, reset pour nouvelles prédictions
+     *          - OUI -> calcul des nouveaux scores
+     *            - si dernière brasse -> status = "finished", winnerIndex
+     *            - sinon -> progression vers la brasse suivante
      */
     async function submitResult(playerIndex, tricks) {
       const { db, gid, scoresData, players } = state;
@@ -447,7 +454,7 @@ state.unsubSoiree = onSnapshot(
         newScores[i] = updated;
       }
 
-      // --- Préparation de la prochaine brasse ---
+      // --- Fin de partie ou progression vers la prochaine brasse ? ---
       const round = Number.isInteger(scoresData.round) ? scoresData.round : 1;
       const maxCards = Number.isInteger(scoresData.maxCards) ? scoresData.maxCards : 10;
       const currentCards = Number.isInteger(scoresData.cardsThisRound)
@@ -455,61 +462,94 @@ state.unsubSoiree = onSnapshot(
         : 1;
 
       const totalRounds = 2 * maxCards - 1;
-      let nextRound = round + 1;
-      let nextCardsThisRound = currentCards;
+      const isLastRound = (round >= totalRounds);
 
-      // Progression du nombre de cartes (1 → maxCards → 1)
-      if (round < maxCards) {
-        // phase montante
-        nextCardsThisRound = currentCards + 1;
-      } else {
-        // phase descendante
-        nextCardsThisRound = currentCards - 1;
-      }
+      let patchFinal;
 
-      if (nextCardsThisRound < 1) {
-        nextCardsThisRound = 1;
-      }
+      if (isLastRound) {
+        // Dernière brasse : on fige la partie en "finished" + gagnant
+        let winnerIndex = null;
+        let bestScore = -1;
 
-      if (nextRound > totalRounds) {
-        nextRound = totalRounds; // étape "fin de partie" à gérer plus tard
-      }
-
-      // Rotation du brasseur
-      let nextDealerIndex = Number.isInteger(scoresData.dealerIndex)
-        ? scoresData.dealerIndex
-        : 0;
-
-      if (playerCount > 0) {
-        nextDealerIndex = (nextDealerIndex + 1) % playerCount;
-      }
-
-      // Nouveau premier joueur pour les prédictions
-      let nextPredictionTurnIndex = null;
-      if (playerCount > 0) {
-        const orderNext = computePredictionOrder(nextDealerIndex, playerCount);
-        if (orderNext.length > 0) {
-          nextPredictionTurnIndex = orderNext[0];
+        for (let i = 0; i < playerCount; i++) {
+          const s = typeof newScores[i] === 'number' ? newScores[i] : 0;
+          if (s > bestScore) {
+            bestScore = s;
+            winnerIndex = i;
+          }
         }
+
+        patchFinal = {
+          scores: newScores,
+          results: newResults,
+          resultsError: false,
+
+          round: round,
+          cardsThisRound: currentCards,
+          dealerIndex: Number.isInteger(scoresData.dealerIndex)
+            ? scoresData.dealerIndex
+            : 0,
+
+          status: 'finished',
+          winnerIndex
+        };
+      } else {
+        // Brasse suivante : progression 1 → maxCards → 1
+        let nextRound = round + 1;
+        let nextCardsThisRound = currentCards;
+
+        if (round < maxCards) {
+          // phase montante
+          nextCardsThisRound = currentCards + 1;
+        } else {
+          // phase descendante
+          nextCardsThisRound = currentCards - 1;
+        }
+
+        if (nextCardsThisRound < 1) {
+          nextCardsThisRound = 1;
+        }
+
+        if (nextRound > totalRounds) {
+          nextRound = totalRounds;
+        }
+
+        // Rotation du brasseur
+        let nextDealerIndex = Number.isInteger(scoresData.dealerIndex)
+          ? scoresData.dealerIndex
+          : 0;
+
+        if (playerCount > 0) {
+          nextDealerIndex = (nextDealerIndex + 1) % playerCount;
+        }
+
+        // Nouveau premier joueur pour les prédictions
+        let nextPredictionTurnIndex = null;
+        if (playerCount > 0) {
+          const orderNext = computePredictionOrder(nextDealerIndex, playerCount);
+          if (orderNext.length > 0) {
+            nextPredictionTurnIndex = orderNext[0];
+          }
+        }
+
+        patchFinal = {
+          scores: newScores,
+
+          // on efface les résultats de la brasse terminée
+          results: {},
+          resultsError: false,
+
+          // infos de progression
+          round: nextRound,
+          cardsThisRound: nextCardsThisRound,
+          dealerIndex: nextDealerIndex,
+
+          // reset pour la phase prédictions
+          predictions: {},
+          predictionTurnIndex: nextPredictionTurnIndex,
+          status: 'prediction'
+        };
       }
-
-      const patchFinal = {
-        scores: newScores,
-
-        // on efface les résultats de la brasse terminée
-        results: {},
-        resultsError: false,
-
-        // infos de progression
-        round: nextRound,
-        cardsThisRound: nextCardsThisRound,
-        dealerIndex: nextDealerIndex,
-
-        // reset pour la phase prédictions
-        predictions: {},
-        predictionTurnIndex: nextPredictionTurnIndex,
-        status: 'prediction'
-      };
 
       try {
         await updateDoc(scoresRef, patchFinal);
