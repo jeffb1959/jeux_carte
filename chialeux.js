@@ -479,8 +479,25 @@ function initHostControls() {
     });
   }
 
-  // btnSetup et btnFinish seront branchés plus tard
+  // Nouveau : branchement du bouton "Fin de partie"
+  const btnFinish = document.getElementById("btnFinish");
+  if (btnFinish) {
+    btnFinish.addEventListener("click", async () => {
+      try {
+        if (window.ModChialeux && typeof window.ModChialeux.finishGameNow === "function") {
+          await window.ModChialeux.finishGameNow();
+        } else {
+          console.warn("[chialeux] finishGameNow non disponible sur ModChialeux");
+        }
+      } catch (err) {
+        console.error("[chialeux] erreur finishGameNow:", err);
+      }
+    });
+  }
+
+  // btnSetup sera branché plus tard si nécessaire
 }
+
 
 function updateHostControls(model) {
   const hostControls = document.getElementById("hostControls");
@@ -539,4 +556,5 @@ function onReady(fn) {
   else
     fn();
 }
+
 
