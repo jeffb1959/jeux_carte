@@ -1,3 +1,4 @@
+
 // modChialeux.js
 // Module de gestion Firestore pour le jeu du Chialeux.
 // Utilise Firebase Firestore v10.13.0 (SDK modulaire).
@@ -59,25 +60,25 @@ import {
       if (state.unsubSoiree) { state.unsubSoiree(); state.unsubSoiree = null; }
       if (state.unsubScores) { state.unsubScores(); state.unsubScores = null; }
 
-      state.unsubSoiree = onSnapshot(
-        soireeRef,
-        (snap) => {
-          state.soireeData = snap.exists() ? snap.data() : null;
+state.unsubSoiree = onSnapshot(
+  soireeRef,
+  (snap) => {
+    state.soireeData = snap.exists() ? snap.data() : null;
 
-          // Essaye d'initialiser / compléter scores_chialeux à partir de soirees
-          ensureScoresInitializedFromSoiree().then(() => {
-            rebuildModelAndEmit(onUpdate);
-          }).catch(err => {
-            console.error('[ModChialeux] erreur ensureScoresInitializedFromSoiree (soirees):', err);
-            onError && onError(err);
-          });
-        },
-        (err) => {
-          console.error('[ModChialeux] erreur listen soirees:', err);
-          onError && onError(err);
-        }
-      );
-
+    // ✅ On ne touche PAS au document scores_chialeux ici,
+    // on se contente de reconstruire le modèle local si possible.
+    try {
+      rebuildModelAndEmit(onUpdate);
+    } catch (err) {
+      console.error('[ModChialeux] erreur rebuildModelAndEmit (soirees):', err);
+      onError && onError(err);
+    }
+  },
+  (err) => {
+    console.error('[ModChialeux] erreur listen soirees:', err);
+    onError && onError(err);
+  }
+);
       state.unsubScores = onSnapshot(
         scoresRef,
         (snap) => {
