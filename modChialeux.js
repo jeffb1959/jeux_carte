@@ -214,8 +214,12 @@ import {
         patch.predictions = {};
       }
 
-      // predictionTurnIndex : premier joueur à gauche du brasseur si manquant
-      if (!Number.isInteger(current.predictionTurnIndex)) {
+      // predictionTurnIndex : premier joueur à gauche du brasseur
+      // 👉 On NE l'initialise que s'il n'y a encore AUCUNE prédiction.
+      const hasAnyPrediction =
+        current.predictions && Object.keys(current.predictions).length > 0;
+
+      if (!Number.isInteger(current.predictionTurnIndex) && !hasAnyPrediction) {
         const order = computePredictionOrder(dealerIndex, playerCount);
         if (order.length > 0) {
           patch.predictionTurnIndex = order[0];
